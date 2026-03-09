@@ -8,9 +8,10 @@ import serial
 class SerialConnection:
     """Manages the serial link to the computer-side Raspberry Pi."""
 
-    def __init__(self, port: str | None = None, baudrate: int = 115200, timeout: float = 5.0):
+    def __init__(self, port: str | None = None, baudrate: int = 115200, timeout: float = 5.0, move_timeout: float = 30.0):
         self.baudrate = baudrate
         self.timeout = timeout
+        self.move_timeout = move_timeout
         self.port = port or self._find_port()
         self.ser: serial.Serial | None = None
 
@@ -37,10 +38,15 @@ class SerialConnection:
             print("[serial] Disconnected.")
 
     def send_command(self, command: str) -> str:
-        """Send a command and wait for an ACK line from the Pi.
+        """Send a command, wait for ACK, then wait for DONE when movement completes.
 
-        Returns the response string from the Pi.
-        Raises RuntimeError on timeout or serial error.
+        Protocol:
+          1. Send: "COMMAND\\n"
+          2. Receive: "ACK\\n"  (Pi received the command)
+          3. Receive: "DONE\\n" (movement finished)
+
+        Returns "DONE" on success.
+        Raises RuntimeError on timeout, NACK, or serial error.
         """
         if not self.ser or not self.ser.is_open:
             self.connect()
@@ -50,9 +56,22 @@ class SerialConnection:
         self.ser.flush()
         print(f"[serial] Sent: {command}")
 
-        # Read response (expect ACK or error)
-        response = self.ser.readline().decode("utf-8").strip()
-        if not response:
-            raise RuntimeError(f"Timeout waiting for response to '{command}'")
-        print(f"[serial] Received: {response}")
-        return response
+        # Phase 1: Wait for ACK (short timeout)
+        ack = self.ser.readline().decode("utf-8").strip()
+        if not ack:
+            raise RuntimeError(f"Timeout waiting for ACK to '{command}'")
+        if ack != "ACK":
+            raise RuntimeError(f"Expected ACK, got '{ack}' for '{command}'")
+        print(f"[serial] ACK received")
+
+        # Phase 2: Wait for DONE (longer timeout for movement to complete)
+        old_timeout = self.ser.timeout
+        self.ser.timeout = self.move_timeout
+        done = self.ser.readline().decode("utf-8").strip()
+        self.ser.timeout = old_timeout
+        if not done:
+            raise RuntimeError(f"Timeout waiting for movement to complete: '{command}'")
+        if done != "DONE":
+            raise RuntimeError(f"Expected DONE, got '{done}' for '{command}'")
+        print(f"[serial] Movement complete")
+        return "DONE"
