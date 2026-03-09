@@ -3,6 +3,7 @@
 import glob
 import time
 import serial
+from .tools import RESP_ACK, RESP_DONE, RESP_ERROR
 
 
 class SerialConnection:
@@ -37,41 +38,49 @@ class SerialConnection:
             self.ser.close()
             print("[serial] Disconnected.")
 
-    def send_command(self, command: str) -> str:
-        """Send a command, wait for ACK, then wait for DONE when movement completes.
+    def _read_byte(self, timeout: float | None = None) -> int:
+        """Read a single byte, using the given timeout (or default)."""
+        old_timeout = self.ser.timeout
+        if timeout is not None:
+            self.ser.timeout = timeout
+        data = self.ser.read(1)
+        if timeout is not None:
+            self.ser.timeout = old_timeout
+        if not data:
+            raise RuntimeError("Timeout waiting for response byte")
+        return data[0]
+
+    def send_command(self, cmd_byte: int) -> str:
+        """Send a 1-byte command, wait for ACK byte, then wait for DONE byte.
 
         Protocol:
-          1. Send: "COMMAND\\n"
-          2. Receive: "ACK\\n"  (Pi received the command)
-          3. Receive: "DONE\\n" (movement finished)
+          1. Send: cmd_byte (1 byte)
+          2. Receive: 0xAA (ACK — command received)
+          3. Receive: 0xBB (DONE — movement complete)
 
         Returns "DONE" on success.
-        Raises RuntimeError on timeout, NACK, or serial error.
+        Raises RuntimeError on timeout or error response.
         """
         if not self.ser or not self.ser.is_open:
             self.connect()
 
-        line = command.strip() + "\n"
-        self.ser.write(line.encode("utf-8"))
+        self.ser.write(bytes([cmd_byte]))
         self.ser.flush()
-        print(f"[serial] Sent: {command}")
+        print(f"[serial] Sent: 0x{cmd_byte:02X}")
 
         # Phase 1: Wait for ACK (short timeout)
-        ack = self.ser.readline().decode("utf-8").strip()
-        if not ack:
-            raise RuntimeError(f"Timeout waiting for ACK to '{command}'")
-        if ack != "ACK":
-            raise RuntimeError(f"Expected ACK, got '{ack}' for '{command}'")
-        print(f"[serial] ACK received")
+        resp = self._read_byte()
+        if resp == RESP_ERROR:
+            raise RuntimeError(f"Pi returned ERROR (0xFF) for command 0x{cmd_byte:02X}")
+        if resp != RESP_ACK:
+            raise RuntimeError(f"Expected ACK (0xAA), got 0x{resp:02X}")
+        print("[serial] ACK received")
 
-        # Phase 2: Wait for DONE (longer timeout for movement to complete)
-        old_timeout = self.ser.timeout
-        self.ser.timeout = self.move_timeout
-        done = self.ser.readline().decode("utf-8").strip()
-        self.ser.timeout = old_timeout
-        if not done:
-            raise RuntimeError(f"Timeout waiting for movement to complete: '{command}'")
-        if done != "DONE":
-            raise RuntimeError(f"Expected DONE, got '{done}' for '{command}'")
-        print(f"[serial] Movement complete")
+        # Phase 2: Wait for DONE (longer timeout for movement)
+        resp = self._read_byte(timeout=self.move_timeout)
+        if resp == RESP_ERROR:
+            raise RuntimeError(f"Pi returned ERROR during movement for 0x{cmd_byte:02X}")
+        if resp != RESP_DONE:
+            raise RuntimeError(f"Expected DONE (0xBB), got 0x{resp:02X}")
+        print("[serial] Movement complete")
         return "DONE"

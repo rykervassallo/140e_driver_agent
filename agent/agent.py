@@ -1,7 +1,7 @@
 """Core agent loop for the RC car controller."""
 
 import anthropic
-from .tools import get_claude_tools, get_serial_command
+from .tools import get_claude_tools, get_cmd_byte
 from .serial_comm import SerialConnection
 from .camera import Camera
 from .prompts import SYSTEM_PROMPT
@@ -43,8 +43,8 @@ class RCCarAgent:
         }
 
     def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
-        """Execute a tool call by sending the corresponding serial command."""
-        cmd = get_serial_command(tool_name)
+        """Execute a tool call by sending the corresponding 1-byte command."""
+        cmd = get_cmd_byte(tool_name)
         if cmd is None:
             return f"Error: unknown tool '{tool_name}'"
         try:
