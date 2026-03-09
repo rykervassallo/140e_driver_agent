@@ -1,0 +1,4 @@
+anthropic
+pyserial
+opencv-python
+Pillow
