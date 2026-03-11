@@ -181,10 +181,11 @@ export class RCCarAgent {
         }
 
         const args = fc.args as Record<string, number>;
-        const value = args?.degrees ?? args?.inches ?? 0;
+        const value = args?.degrees ?? args?.inches ?? 1;
+        const cmdByte = CMD_BYTES[fc.name!]!;
         console.log(`[agent] Tool: ${fc.name}(${value})`);
         if (this.debug) {
-          console.log(`[debug] Would send 0x${CMD_BYTES[fc.name!]!.toString(16).padStart(2, "0")} ${value} to Pi`);
+          console.log(`[debug] Would send 0x${cmdByte.toString(16).padStart(2, "0")} x${value} to Pi`);
           functionResponses.push({
             id: fc.id!,
             name: fc.name!,
@@ -192,11 +193,13 @@ export class RCCarAgent {
           });
         } else {
           try {
-            const result = await this.serial!.sendCommand(CMD_BYTES[fc.name!]!, value);
+            for (let i = 0; i < value; i++) {
+              await this.serial!.sendCommand(cmdByte);
+            }
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,
-              response: { result },
+              response: { result: "DONE" },
             });
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
