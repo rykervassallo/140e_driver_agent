@@ -1,13 +1,11 @@
 import { Type, type FunctionDeclaration } from "@google/genai";
 
-// Command bytes (sent to Pi)
+// Command bytes (sent to Pi, followed by a 1-byte value)
 export const CMD_BYTES: Record<string, number> = {
-  turn_left_15: 0x01,
-  turn_right_15: 0x02,
-  move_forward_1ft: 0x03,
-  move_forward_2in: 0x04,
-  move_backward_1ft: 0x05,
-  move_backward_2in: 0x06,
+  turn_left: 0x01,
+  turn_right: 0x02,
+  move_forward: 0x03,
+  move_backward: 0x04,
 };
 
 // Response bytes (from Pi)
@@ -17,12 +15,62 @@ export const RESP_ERROR = 0xff;
 
 // Gemini function declarations
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
-  { name: "turn_left_15", description: "Turn the car left by 15 degrees." },
-  { name: "turn_right_15", description: "Turn the car right by 15 degrees." },
-  { name: "move_forward_1ft", description: "Move the car forwards by 1 foot." },
-  { name: "move_forward_2in", description: "Move the car forwards by 2 inches." },
-  { name: "move_backward_1ft", description: "Move the car backwards by 1 foot." },
-  { name: "move_backward_2in", description: "Move the car backwards by 2 inches." },
+  {
+    name: "turn_left",
+    description: "Turn the car left by the specified number of degrees.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        degrees: {
+          type: Type.INTEGER,
+          description: "Number of degrees to turn left (1-180).",
+        },
+      },
+      required: ["degrees"],
+    },
+  },
+  {
+    name: "turn_right",
+    description: "Turn the car right by the specified number of degrees.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        degrees: {
+          type: Type.INTEGER,
+          description: "Number of degrees to turn right (1-180).",
+        },
+      },
+      required: ["degrees"],
+    },
+  },
+  {
+    name: "move_forward",
+    description: "Move the car forward by the specified number of inches.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        inches: {
+          type: Type.INTEGER,
+          description: "Number of inches to move forward (1-72).",
+        },
+      },
+      required: ["inches"],
+    },
+  },
+  {
+    name: "move_backward",
+    description: "Move the car backward by the specified number of inches.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        inches: {
+          type: Type.INTEGER,
+          description: "Number of inches to move backward (1-72).",
+        },
+      },
+      required: ["inches"],
+    },
+  },
   {
     name: "task_complete",
     description:

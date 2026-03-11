@@ -73,6 +73,8 @@ export class Camera {
           "-probesize", "32",
           "-i", "pipe:0",
           "-window_title", "RC Car Camera",
+          "-x", "640",
+          "-y", "480",
           "-loglevel", "error",
         ],
         { stdio: ["pipe", "ignore", "pipe"] }

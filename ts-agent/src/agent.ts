@@ -175,16 +175,16 @@ export class RCCarAgent {
           functionResponses.push({
             id: fc.id!,
             name: fc.name,
-            response: { result: "Task ended." },
+            response: { result: "Task noted. Continue listening for further instructions." },
           });
-          this.session!.sendToolResponse({ functionResponses });
-          this.session!.close();
-          return;
+          continue;
         }
 
-        console.log(`[agent] Tool: ${fc.name}`);
+        const args = fc.args as Record<string, number>;
+        const value = args?.degrees ?? args?.inches ?? 0;
+        console.log(`[agent] Tool: ${fc.name}(${value})`);
         if (this.debug) {
-          console.log(`[debug] Would send 0x${CMD_BYTES[fc.name!]!.toString(16).padStart(2, "0")} to Pi`);
+          console.log(`[debug] Would send 0x${CMD_BYTES[fc.name!]!.toString(16).padStart(2, "0")} ${value} to Pi`);
           functionResponses.push({
             id: fc.id!,
             name: fc.name!,
@@ -192,7 +192,7 @@ export class RCCarAgent {
           });
         } else {
           try {
-            const result = await this.serial!.sendCommand(CMD_BYTES[fc.name!]!);
+            const result = await this.serial!.sendCommand(CMD_BYTES[fc.name!]!, value);
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,

@@ -70,14 +70,14 @@ export class SerialConnection {
     });
   }
 
-  async sendCommand(cmdByte: number): Promise<string> {
+  async sendCommand(cmdByte: number, value: number): Promise<string> {
     if (!this.port?.isOpen) {
       await this.connect();
     }
 
-    this.port!.write(Buffer.from([cmdByte]));
+    this.port!.write(Buffer.from([cmdByte, value]));
     this.port!.drain();
-    console.log(`[serial] Sent: 0x${cmdByte.toString(16).padStart(2, "0")}`);
+    console.log(`[serial] Sent: 0x${cmdByte.toString(16).padStart(2, "0")} ${value}`);
 
     // Phase 1: Wait for ACK
     const ack = await this.readByte(ACK_TIMEOUT_MS);
