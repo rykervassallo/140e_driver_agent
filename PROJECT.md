@@ -1,5 +1,5 @@
 ## Overall goal
-Create agent who observes webcam output from phone and incoming prompt and outputs actions for an RC car.
+Create agent who observes webcam output from a phone camera using and outputs actions for an RC car.
 
 ## Supported tools
 - Turn left 15 degrees
