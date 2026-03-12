@@ -181,7 +181,9 @@ export class RCCarAgent {
         }
 
         const args = fc.args as Record<string, number>;
-        const value = args?.degrees ?? args?.inches ?? 1;
+        const rawValue = args?.degrees ?? args?.inches ?? 1;
+        // Turns are in 5-degree increments; inches are 1:1
+        const value = args?.degrees != null ? Math.round(rawValue / 5) : rawValue;
         const cmdByte = CMD_BYTES[fc.name!]!;
         console.log(`[agent] Tool: ${fc.name}(${value})`);
         if (this.debug) {
