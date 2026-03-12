@@ -6,6 +6,7 @@ export const CMD_BYTES: Record<string, number> = {
   turn_right: 0x02,
   move_forward: 0x03,
   move_backward: 0x04,
+  stop: 0x05,
 };
 
 // Response bytes (from Pi)
@@ -17,13 +18,13 @@ export const RESP_ERROR = 0xff;
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "turn_left",
-    description: "Turn the car left by the specified number of degrees. Each unit is 5 degrees, so the value should be a multiple of 5.",
+    description: "Turn the car left by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         degrees: {
           type: Type.INTEGER,
-          description: "Number of degrees to turn left (must be a multiple of 5, e.g. 5, 10, 15, ... 180).",
+          description: "Number of degrees to turn left (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
       required: ["degrees"],
@@ -31,13 +32,13 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "turn_right",
-    description: "Turn the car right by the specified number of degrees. Each unit is 5 degrees, so the value should be a multiple of 5.",
+    description: "Turn the car right by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         degrees: {
           type: Type.INTEGER,
-          description: "Number of degrees to turn right (must be a multiple of 5, e.g. 5, 10, 15, ... 180).",
+          description: "Number of degrees to turn right (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
       required: ["degrees"],

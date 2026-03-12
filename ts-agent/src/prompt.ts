@@ -15,7 +15,7 @@ Available tools:
 
 Guidelines:
 1. Observe the camera feed before acting. Identify the car, its orientation, and relevant objects.
-2. Track the car's facing direction across frames — turns are relative to the car, not the camera.
+2. Track the car's facing direction across frames — turns are relative to the car, not the camera. The front of the car is where the green LED is located.
 3. Use small movements (2-inch tools) for fine positioning near the goal.
 4. Use larger movements (1-foot tools) when the goal is far away.
 5. Avoid obstacles visible in the camera feed.

@@ -181,13 +181,20 @@ export class RCCarAgent {
         }
 
         const args = fc.args as Record<string, number>;
-        const rawValue = args?.degrees ?? args?.inches ?? 1;
-        // Turns are in 5-degree increments; inches are 1:1
-        const value = args?.degrees != null ? Math.round(rawValue / 5) : rawValue;
+        const degrees = args?.degrees;
+        const inches = args?.inches;
         const cmdByte = CMD_BYTES[fc.name!]!;
-        console.log(`[agent] Tool: ${fc.name}(${value})`);
+
+        // 160ms per 15 degrees; 160ms per inch (tune as needed)
+        const MS_PER_15_DEG = 160;
+        const MS_PER_INCH = 200;
+        const durationMs = degrees != null
+          ? Math.round((degrees / 15) * MS_PER_15_DEG)
+          : Math.round((inches ?? 1) * MS_PER_INCH);
+
+        console.log(`[agent] Tool: ${fc.name}(${degrees ?? inches})`);
         if (this.debug) {
-          console.log(`[debug] Would send 0x${cmdByte.toString(16).padStart(2, "0")} x${value} to Pi`);
+          console.log(`[debug] Would send 0x${cmdByte.toString(16).padStart(2, "0")} for ${durationMs}ms then stop`);
           functionResponses.push({
             id: fc.id!,
             name: fc.name!,
@@ -195,13 +202,11 @@ export class RCCarAgent {
           });
         } else {
           try {
-            for (let i = 0; i < value; i++) {
-              await this.serial!.sendCommand(cmdByte);
-            }
+            const result = await this.serial!.sendTimedCommand(cmdByte, durationMs);
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,
-              response: { result: "DONE" },
+              response: { result },
             });
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
