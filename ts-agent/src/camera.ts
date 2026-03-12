@@ -19,7 +19,7 @@ export class Camera {
 
   constructor(
     private deviceIndex: string = "0",
-    private videoSize?: string,
+    private videoSize: string = "1920x1440",
   ) {}
 
   private captureArgs(): string[] {

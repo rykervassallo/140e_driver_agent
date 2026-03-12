@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, type LiveServerMessage, type Session } from "@google/genai";
 import Mic from "mic";
 import Speaker from "speaker";
 import { SerialConnection } from "./serial.js";
@@ -65,6 +65,13 @@ export class RCCarAgent {
         sessionResumption: {},
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+            silenceDurationMs: 1000,
+          },
+        },
       },
     });
 
