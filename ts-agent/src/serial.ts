@@ -15,7 +15,7 @@ export class SerialConnection {
   }
 
   private async findPort(): Promise<string> {
-    const patterns = ["/dev/tty.usbmodem*", "/dev/ttyACM*", "/dev/ttyUSB*"];
+    const patterns = ["/dev/tty.usbmodem*", "/dev/tty.usbserial*", "/dev/ttyACM*", "/dev/ttyUSB*"];
     const candidates: string[] = [];
     for (const pattern of patterns) {
       candidates.push(...(await glob(pattern)));
