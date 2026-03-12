@@ -106,7 +106,7 @@ export class RCCarAgent {
           },
         });
       }
-    }, 1000);
+    }, 500);
   }
 
   private startAudioStream(): void {

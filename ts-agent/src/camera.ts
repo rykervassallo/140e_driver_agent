@@ -36,7 +36,7 @@ export class Camera {
       "ffmpeg",
       [
         ...this.captureArgs(),
-        "-r", "1",
+        "-r", "2",
         "-f", "image2pipe",
         "-vcodec", "mjpeg",
         "-q:v", "5",
