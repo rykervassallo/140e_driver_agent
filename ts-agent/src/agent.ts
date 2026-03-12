@@ -69,7 +69,7 @@ export class RCCarAgent {
           automaticActivityDetection: {
             startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
             endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
-            silenceDurationMs: 1000,
+            silenceDurationMs: 500,
           },
         },
       },
