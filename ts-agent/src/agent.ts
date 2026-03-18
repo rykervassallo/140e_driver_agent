@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, type LiveServerMessage, type Session } from "@google/genai";
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, ActivityHandling, TurnCoverage, type LiveServerMessage, type Session } from "@google/genai";
 import Mic from "mic";
 import Speaker from "speaker";
 import { SerialConnection } from "./serial.js";
@@ -69,10 +69,13 @@ export class RCCarAgent {
         outputAudioTranscription: {},
         realtimeInputConfig: {
           automaticActivityDetection: {
-            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
-            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
-            silenceDurationMs: 500,
+            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+            prefixPaddingMs: 20,
+            silenceDurationMs: 300,
           },
+          activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+          turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
         },
       },
     });
@@ -150,6 +153,11 @@ export class RCCarAgent {
           this.audioChunks.push(Buffer.from(part.inlineData.data, "base64"));
         }
       }
+    }
+
+    // If the model was interrupted by user speech, drop buffered audio
+    if (content?.interrupted) {
+      this.audioChunks = [];
     }
 
     // Flush buffered audio when the model's turn is complete
