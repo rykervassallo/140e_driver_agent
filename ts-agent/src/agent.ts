@@ -7,7 +7,7 @@ import { Camera } from "./camera.js";
 import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import { PositionTracker } from "./position.js";
-import { DISTANCE_MULTIPLIER } from "./constants.js";
+import { DISTANCE_MULTIPLIER, MS_PER_DEGREE, MS_PER_INCH, MIN_MOVEMENT_DELAY_MS } from "./constants.js";
 import { RolloutLogger } from "./rollout.js";
 
 const MODEL = "gpt-realtime" as const;
@@ -401,9 +401,15 @@ export class RCCarAgent {
 
       console.log(`[pos] ${this.tracker.getStatusString()}`);
 
+      // Wait time proportional to movement so the car finishes before we check the camera
+      const delayMs = Math.max(
+        MIN_MOVEMENT_DELAY_MS,
+        (degrees ? degrees * MS_PER_DEGREE : 0) + (inches ? inches * MS_PER_INCH : 0),
+      );
+
       if (this.debug) {
         console.log(
-          `[debug] Would send [0x${cmdByte.toString(16).padStart(2, "0")}, ${value}]`,
+          `[debug] Would send [0x${cmdByte.toString(16).padStart(2, "0")}, ${value}] (wait ${delayMs}ms)`,
         );
         result = `DONE (debug). ${this.tracker.getStatusString()}`;
       } else {
@@ -417,6 +423,7 @@ export class RCCarAgent {
             cmdByte,
             adjustedValue,
           );
+          await new Promise((r) => setTimeout(r, delayMs));
           result = `${serialResult}. ${this.tracker.getStatusString()}`;
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
