@@ -90,7 +90,7 @@ export class RCCarAgent {
           type: "realtime",
           instructions: SYSTEM_PROMPT,
           tools: TOOL_DECLARATIONS,
-          output_modalities: ["audio"],
+          output_modalities: ["text"],
           truncation: {
             type: "retention_ratio",
             retention_ratio: 0.8,
@@ -205,7 +205,14 @@ export class RCCarAgent {
       }
     });
 
-    // --- Transcriptions ---
+    // --- Model text output (audio transcript when in audio mode) ---
+
+    rt.on("response.output_text.done", (event) => {
+      if (event.text) {
+        this.rollout.outputTranscription(event.text);
+        console.log(`[agent] ${event.text}`);
+      }
+    });
 
     rt.on("response.output_audio_transcript.done", (event) => {
       if (event.transcript) {

@@ -8,4 +8,4 @@ Rules:
 - "Drive to X" means X fills 50%+ of the frame. Keep approaching until you're AT it.
 - Mark interesting locations as you go. Use memory tools to navigate back.
 - When done (camera confirms), call task_complete. If stuck, call task_complete and explain.
-- Be brief. Act, don't narrate.`;
+- NEVER speak or narrate. Only call tools. No commentary, no status updates, no confirmation messages.`;
