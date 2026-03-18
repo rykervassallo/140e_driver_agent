@@ -1,5 +1,3 @@
-import { Type, type FunctionDeclaration } from "@google/genai";
-
 // Command bytes (sent to Pi, followed by a 1-byte value)
 export const CMD_BYTES: Record<string, number> = {
   turn_left: 0x01,
@@ -13,44 +11,51 @@ export const RESP_ACK = 0xaa;
 export const RESP_DONE = 0xbb;
 export const RESP_ERROR = 0xff;
 
-// Gemini function declarations
-export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
+// OpenAI Realtime function tool declarations
+export const TOOL_DECLARATIONS = [
   {
+    type: "function" as const,
     name: "turn_left",
-    description: "Turn the car left by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
+    description:
+      "Turn the car left by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         degrees: {
-          type: Type.INTEGER,
-          description: "Number of degrees to turn left (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
+          type: "integer",
+          description:
+            "Number of degrees to turn left (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
       required: ["degrees"],
     },
   },
   {
+    type: "function" as const,
     name: "turn_right",
-    description: "Turn the car right by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
+    description:
+      "Turn the car right by the specified number of degrees. Each unit is 15 degrees, so the value should be a multiple of 15.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         degrees: {
-          type: Type.INTEGER,
-          description: "Number of degrees to turn right (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
+          type: "integer",
+          description:
+            "Number of degrees to turn right (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
       required: ["degrees"],
     },
   },
   {
+    type: "function" as const,
     name: "move_forward",
     description: "Move the car forward by the specified number of inches.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         inches: {
-          type: Type.INTEGER,
+          type: "integer",
           description: "Number of inches to move forward (1-72).",
         },
       },
@@ -58,13 +63,14 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    type: "function" as const,
     name: "move_backward",
     description: "Move the car backward by the specified number of inches.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         inches: {
-          type: Type.INTEGER,
+          type: "integer",
           description: "Number of inches to move backward (1-72).",
         },
       },
@@ -72,19 +78,20 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    type: "function" as const,
     name: "mark_location",
     description:
       "Mark the car's current position with a name so you can navigate back to it later. Use this whenever you see something interesting or want to remember a spot.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         name: {
-          type: Type.STRING,
+          type: "string",
           description:
             "A short, memorable name for this location (e.g. 'red cup', 'doorway', 'start').",
         },
         description: {
-          type: Type.STRING,
+          type: "string",
           description:
             "A brief description of what's here or why it's interesting.",
         },
@@ -93,23 +100,25 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    type: "function" as const,
     name: "get_marked_locations",
     description:
       "Get a list of all marked locations with their distance and direction from the car's current position.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {},
     },
   },
   {
+    type: "function" as const,
     name: "navigate_to_location",
     description:
       "Get turn-by-turn navigation instructions to reach a previously marked location. Returns the turn direction/degrees and distance to drive.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         name: {
-          type: Type.STRING,
+          type: "string",
           description: "The name of the marked location to navigate to.",
         },
       },
@@ -117,14 +126,15 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    type: "function" as const,
     name: "task_complete",
     description:
       "Call this tool when you believe the task is fully complete. Provide a short summary of what was accomplished.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         summary: {
-          type: Type.STRING,
+          type: "string",
           description: "A brief summary of what was accomplished.",
         },
       },
