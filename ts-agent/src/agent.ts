@@ -6,7 +6,6 @@ import { SerialConnection } from "./serial.js";
 import { Camera } from "./camera.js";
 import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
-import { PositionTracker } from "./position.js";
 import { DISTANCE_MULTIPLIER, MS_PER_DEGREE, MS_PER_INCH, MIN_MOVEMENT_DELAY_MS } from "./constants.js";
 import { RolloutLogger } from "./rollout.js";
 
@@ -35,7 +34,6 @@ export class RCCarAgent {
   private frameCounter = 0;
   private lastFrameItemId: string | null = null;
   private resolveDone: (() => void) | null = null;
-  private tracker: PositionTracker = new PositionTracker();
   private rollout: RolloutLogger = new RolloutLogger();
 
   constructor(options: AgentOptions = {}) {
@@ -349,37 +347,7 @@ export class RCCarAgent {
 
     let result: string;
 
-    if (call.name === "task_complete") {
-      const summary = args.summary ?? "";
-      console.log(`\n[agent] Task complete: ${summary}`);
-      result = "Task noted. Continue listening for further instructions.";
-    } else if (call.name === "mark_location") {
-      this.tracker.markLocation(args.name, args.description ?? "");
-      console.log(
-        `[agent] Marked location: "${args.name}" at (${Math.round(this.tracker.position.x)}", ${Math.round(this.tracker.position.y)}")`,
-      );
-      result = `Location "${args.name}" marked. ${this.tracker.getStatusString()}`;
-    } else if (call.name === "get_marked_locations") {
-      const locations = this.tracker.getMarkedLocations();
-      const locResult =
-        locations.length === 0
-          ? "No locations marked yet."
-          : locations
-              .map(
-                (l) =>
-                  `"${l.name}": ${l.description} — ${l.distanceInches}" away, ${l.relativeBearing}`,
-              )
-              .join("\n");
-      console.log(`[agent] Get marked locations (${locations.length} total)`);
-      result = `${locResult}\n\nCurrent: ${this.tracker.getStatusString()}`;
-    } else if (call.name === "navigate_to_location") {
-      const nav = this.tracker.navigateTo(args.name);
-      const navResult = nav.found
-        ? nav.description!
-        : `No location named "${args.name}" found. Use get_marked_locations to see available locations.`;
-      console.log(`[agent] Navigate to "${args.name}": ${navResult}`);
-      result = `${navResult}\n\nCurrent: ${this.tracker.getStatusString()}`;
-    } else {
+    {
       // --- Movement tools (serial commands) ---
       const degrees = args.degrees;
       const inches = args.inches;
@@ -387,19 +355,6 @@ export class RCCarAgent {
       const value = degrees ?? inches ?? 0;
 
       console.log(`[agent] Tool: ${call.name}(${value})`);
-
-      // Update position tracker
-      if (call.name === "turn_left") {
-        this.tracker.applyTurn(-(degrees ?? 0));
-      } else if (call.name === "turn_right") {
-        this.tracker.applyTurn(degrees ?? 0);
-      } else if (call.name === "move_forward") {
-        this.tracker.applyMove(inches ?? 0);
-      } else if (call.name === "move_backward") {
-        this.tracker.applyMove(-(inches ?? 0));
-      }
-
-      console.log(`[pos] ${this.tracker.getStatusString()}`);
 
       // Wait time proportional to movement so the car finishes before we check the camera
       const delayMs = Math.max(
@@ -411,7 +366,7 @@ export class RCCarAgent {
         console.log(
           `[debug] Would send [0x${cmdByte.toString(16).padStart(2, "0")}, ${value}] (wait ${delayMs}ms)`,
         );
-        result = `DONE (debug). ${this.tracker.getStatusString()}`;
+        result = `DONE (debug)`;
       } else {
         try {
           const adjustedValue = ["move_forward", "move_backward"].includes(
@@ -424,7 +379,7 @@ export class RCCarAgent {
             adjustedValue,
           );
           await new Promise((r) => setTimeout(r, delayMs));
-          result = `${serialResult}. ${this.tracker.getStatusString()}`;
+          result = serialResult;
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
           result = `Error: ${errMsg}`;
