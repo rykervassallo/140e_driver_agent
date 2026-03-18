@@ -32,6 +32,8 @@ export class RCCarAgent {
     name: string;
     arguments: string;
   }> = [];
+  private frameCounter = 0;
+  private lastFrameItemId: string | null = null;
   private resolveDone: (() => void) | null = null;
   private tracker: PositionTracker = new PositionTracker();
   private rollout: RolloutLogger = new RolloutLogger();
@@ -89,6 +91,10 @@ export class RCCarAgent {
           instructions: SYSTEM_PROMPT,
           tools: TOOL_DECLARATIONS,
           output_modalities: ["audio"],
+          truncation: {
+            type: "retention_ratio",
+            retention_ratio: 0.8,
+          },
           audio: {
             input: {
               format: { type: "audio/pcm", rate: 24000 },
@@ -183,12 +189,16 @@ export class RCCarAgent {
         const calls = [...this.pendingToolCalls];
         this.pendingToolCalls = [];
 
+        // Pause periodic frames during tool execution
+        this.pauseVideoStream();
+
         for (const call of calls) {
           await this.handleToolCall(call);
         }
 
         // Send fresh camera frame so the model sees the result of the action
         this.sendCameraFrame();
+        this.resumeVideoStream();
 
         // Trigger model to continue (process tool results)
         rt.send({ type: "response.create" });
@@ -242,29 +252,56 @@ export class RCCarAgent {
 
   private sendCameraFrame(): void {
     const frame = this.camera.getLatestFrame();
-    if (frame && this.rt) {
-      this.rollout.videoFrame();
-      // SDK types don't include input_image yet — cast to bypass
+    if (!frame || !this.rt) return;
+
+    // Delete the previous frame to keep context lean
+    if (this.lastFrameItemId) {
       this.rt.send({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [
-            {
-              type: "input_image",
-              image_url: `data:image/jpeg;base64,${frame.toString("base64")}`,
-            },
-          ],
-        },
-      } as any);
+        type: "conversation.item.delete",
+        item_id: this.lastFrameItemId,
+      });
     }
+
+    const itemId = `cam_${this.frameCounter++}`;
+    this.lastFrameItemId = itemId;
+
+    this.rollout.videoFrame();
+    // SDK types don't include input_image yet — cast to bypass
+    this.rt.send({
+      type: "conversation.item.create",
+      item: {
+        id: itemId,
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_image",
+            image_url: `data:image/jpeg;base64,${frame.toString("base64")}`,
+          },
+        ],
+      },
+    } as any);
   }
 
   private startVideoStream(): void {
     this.frameInterval = setInterval(() => {
       this.sendCameraFrame();
     }, 2000);
+  }
+
+  private pauseVideoStream(): void {
+    if (this.frameInterval) {
+      clearInterval(this.frameInterval);
+      this.frameInterval = null;
+    }
+  }
+
+  private resumeVideoStream(): void {
+    if (!this.frameInterval) {
+      this.frameInterval = setInterval(() => {
+        this.sendCameraFrame();
+      }, 2000);
+    }
   }
 
   private startAudioStream(): void {

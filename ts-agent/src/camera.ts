@@ -37,6 +37,7 @@ export class Camera {
       [
         ...this.captureArgs(),
         "-r", "2",
+        "-vf", "scale=512:-1",
         "-f", "image2pipe",
         "-vcodec", "mjpeg",
         "-q:v", "5",
