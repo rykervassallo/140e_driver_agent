@@ -5,6 +5,7 @@ import { SerialConnection } from "./serial.js";
 import { Camera } from "./camera.js";
 import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
+import { PositionTracker } from "./position.js";
 
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 
@@ -25,6 +26,7 @@ export class RCCarAgent {
   private audioChunks: Buffer[] = [];
   private lastHandle: string | undefined;
   private resolveDone: (() => void) | null = null;
+  private tracker: PositionTracker = new PositionTracker();
 
   constructor(options: AgentOptions = {}) {
     this.ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
@@ -187,12 +189,55 @@ export class RCCarAgent {
           continue;
         }
 
+        // --- Memory tools (no serial commands) ---
+        if (fc.name === "mark_location") {
+          const args = fc.args as Record<string, string>;
+          this.tracker.markLocation(args.name, args.description ?? "");
+          console.log(`[agent] Marked location: "${args.name}" at (${Math.round(this.tracker.position.x)}", ${Math.round(this.tracker.position.y)}")`);
+          functionResponses.push({
+            id: fc.id!,
+            name: fc.name,
+            response: { result: `Location "${args.name}" marked. ${this.tracker.getStatusString()}` },
+          });
+          continue;
+        }
+
+        if (fc.name === "get_marked_locations") {
+          const locations = this.tracker.getMarkedLocations();
+          const result = locations.length === 0
+            ? "No locations marked yet."
+            : locations.map((l) => `"${l.name}": ${l.description} — ${l.distanceInches}" away, ${l.relativeBearing}`).join("\n");
+          console.log(`[agent] Get marked locations (${locations.length} total)`);
+          functionResponses.push({
+            id: fc.id!,
+            name: fc.name,
+            response: { result: `${result}\n\nCurrent: ${this.tracker.getStatusString()}` },
+          });
+          continue;
+        }
+
+        if (fc.name === "navigate_to_location") {
+          const args = fc.args as Record<string, string>;
+          const nav = this.tracker.navigateTo(args.name);
+          const result = nav.found
+            ? nav.description!
+            : `No location named "${args.name}" found. Use get_marked_locations to see available locations.`;
+          console.log(`[agent] Navigate to "${args.name}": ${result}`);
+          functionResponses.push({
+            id: fc.id!,
+            name: fc.name,
+            response: { result: `${result}\n\nCurrent: ${this.tracker.getStatusString()}` },
+          });
+          continue;
+        }
+
+        // --- Movement tools (serial commands) ---
         const args = fc.args as Record<string, number>;
         const degrees = args?.degrees;
         const inches = args?.inches;
         const cmdByte = CMD_BYTES[fc.name!]!;
 
-        // 160ms per 15 degrees; 160ms per inch (tune as needed)
+        // 160ms per 15 degrees; 200ms per inch (tune as needed)
         const MS_PER_15_DEG = 160;
         const MS_PER_INCH = 200;
         const durationMs = degrees != null
@@ -200,12 +245,26 @@ export class RCCarAgent {
           : Math.round((inches ?? 1) * MS_PER_INCH);
 
         console.log(`[agent] Tool: ${fc.name}(${degrees ?? inches})`);
+
+        // Update position tracker
+        if (fc.name === "turn_left") {
+          this.tracker.applyTurn(-(degrees ?? 0));
+        } else if (fc.name === "turn_right") {
+          this.tracker.applyTurn(degrees ?? 0);
+        } else if (fc.name === "move_forward") {
+          this.tracker.applyMove(inches ?? 0);
+        } else if (fc.name === "move_backward") {
+          this.tracker.applyMove(-(inches ?? 0));
+        }
+
+        console.log(`[pos] ${this.tracker.getStatusString()}`);
+
         if (this.debug) {
           console.log(`[debug] Would send 0x${cmdByte.toString(16).padStart(2, "0")} for ${durationMs}ms then stop`);
           functionResponses.push({
             id: fc.id!,
             name: fc.name!,
-            response: { result: "DONE (debug)" },
+            response: { result: `DONE (debug). ${this.tracker.getStatusString()}` },
           });
         } else {
           try {
@@ -213,7 +272,7 @@ export class RCCarAgent {
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,
-              response: { result },
+              response: { result: `${result}. ${this.tracker.getStatusString()}` },
             });
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);

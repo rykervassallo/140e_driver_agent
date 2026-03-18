@@ -73,6 +73,51 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "mark_location",
+    description:
+      "Mark the car's current position with a name so you can navigate back to it later. Use this whenever you see something interesting or want to remember a spot.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        name: {
+          type: Type.STRING,
+          description:
+            "A short, memorable name for this location (e.g. 'red cup', 'doorway', 'start').",
+        },
+        description: {
+          type: Type.STRING,
+          description:
+            "A brief description of what's here or why it's interesting.",
+        },
+      },
+      required: ["name", "description"],
+    },
+  },
+  {
+    name: "get_marked_locations",
+    description:
+      "Get a list of all marked locations with their distance and direction from the car's current position.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+    },
+  },
+  {
+    name: "navigate_to_location",
+    description:
+      "Get turn-by-turn navigation instructions to reach a previously marked location. Returns the turn direction/degrees and distance to drive.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        name: {
+          type: Type.STRING,
+          description: "The name of the marked location to navigate to.",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "task_complete",
     description:
       "Call this tool when you believe the task is fully complete. Provide a short summary of what was accomplished.",
