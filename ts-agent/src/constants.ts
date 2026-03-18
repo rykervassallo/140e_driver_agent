@@ -1,0 +1,1 @@
+export const DISTANCE_MULTIPLIER = 1.65;

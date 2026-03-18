@@ -6,6 +6,7 @@ import { Camera } from "./camera.js";
 import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import { PositionTracker } from "./position.js";
+import { DISTANCE_MULTIPLIER } from "./constants.js";
 
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 
@@ -270,7 +271,8 @@ export class RCCarAgent {
           });
         } else {
           try {
-            const result = await this.serial!.sendCommand(cmdByte, value);
+            const adjustedValue = ["move_forward", "move_backward"].includes(fc.name!) ? value * DISTANCE_MULTIPLIER : value;
+            const result = await this.serial!.sendCommand(cmdByte, adjustedValue);
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,
