@@ -7,6 +7,7 @@ import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import { PositionTracker } from "./position.js";
 import { DISTANCE_MULTIPLIER } from "./constants.js";
+import { RolloutLogger } from "./rollout.js";
 
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 
@@ -28,6 +29,7 @@ export class RCCarAgent {
   private lastHandle: string | undefined;
   private resolveDone: (() => void) | null = null;
   private tracker: PositionTracker = new PositionTracker();
+  private rollout: RolloutLogger = new RolloutLogger();
 
   constructor(options: AgentOptions = {}) {
     this.ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
@@ -54,9 +56,13 @@ export class RCCarAgent {
       callbacks: {
         onopen: () => console.log("[session] Connected"),
         onmessage: (msg: LiveServerMessage) => this.handleMessage(msg),
-        onerror: (e: ErrorEvent) => console.error("[session] Error:", e.message),
+        onerror: (e: ErrorEvent) => {
+          this.rollout.error(e.message);
+          console.error("[session] Error:", e.message);
+        },
         onclose: (e: CloseEvent) => {
           console.log("[session] Closed:", e.reason);
+          this.rollout.sessionClose(e.reason);
           this.cleanup();
         },
       },
@@ -80,6 +86,10 @@ export class RCCarAgent {
         },
       },
     });
+
+    // Log session setup
+    this.rollout.setup({ model: MODEL, systemInstruction: SYSTEM_PROMPT });
+    this.rollout.userTask(userPrompt);
 
     // Send initial task prompt
     this.session.sendClientContent({
@@ -105,6 +115,7 @@ export class RCCarAgent {
     this.frameInterval = setInterval(() => {
       const frame = this.camera.getLatestFrame();
       if (frame && this.session) {
+        this.rollout.videoFrame();
         this.session.sendRealtimeInput({
           video: {
             data: frame.toString("base64"),
@@ -158,10 +169,14 @@ export class RCCarAgent {
 
     // If the model was interrupted by user speech, drop buffered audio
     if (content?.interrupted) {
+      this.rollout.interrupted();
       this.audioChunks = [];
     }
 
     // Flush buffered audio when the model's turn is complete
+    if (content?.turnComplete) {
+      this.rollout.turnComplete();
+    }
     if (content?.turnComplete && this.audioChunks.length > 0) {
       const combined = Buffer.concat(this.audioChunks);
       this.audioChunks = [];
@@ -172,9 +187,11 @@ export class RCCarAgent {
 
     // Log transcriptions
     if (content?.outputTranscription?.text) {
+      this.rollout.outputTranscription(content.outputTranscription.text);
       console.log(`[agent] ${content.outputTranscription.text}`);
     }
     if (content?.inputTranscription?.text) {
+      this.rollout.inputTranscription(content.inputTranscription.text);
       console.log(`[you]   ${content.inputTranscription.text}`);
     }
 
@@ -187,6 +204,8 @@ export class RCCarAgent {
       }> = [];
 
       for (const fc of msg.toolCall.functionCalls ?? []) {
+        this.rollout.toolCall(fc.name!, fc.args ?? {}, fc.id!);
+
         if (fc.name === "task_complete") {
           const summary = (fc.args as Record<string, string>)?.summary ?? "";
           console.log(`\n[agent] Task complete: ${summary}`);
@@ -290,8 +309,17 @@ export class RCCarAgent {
       }
 
       if (functionResponses.length > 0) {
+        for (const fr of functionResponses) {
+          this.rollout.toolResponse(fr.name, fr.response.result, fr.id);
+        }
         this.session!.sendToolResponse({ functionResponses });
       }
+    }
+
+    // Log tool call cancellations
+    if (msg.toolCallCancellation) {
+      const ids = (msg.toolCallCancellation as { ids?: string[] }).ids ?? [];
+      this.rollout.toolCallCancellation(ids);
     }
 
     // Track session resumption handles

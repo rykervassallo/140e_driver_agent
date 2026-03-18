@@ -1,2 +1,3 @@
 ts-agent/node_modules
 ts-agent/.env
+ts-agent/rollouts/
