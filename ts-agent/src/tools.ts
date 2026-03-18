@@ -6,7 +6,6 @@ export const CMD_BYTES: Record<string, number> = {
   turn_right: 0x02,
   move_forward: 0x03,
   move_backward: 0x04,
-  stop: 0x05,
 };
 
 // Response bytes (from Pi)

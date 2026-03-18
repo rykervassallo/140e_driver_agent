@@ -236,15 +236,9 @@ export class RCCarAgent {
         const degrees = args?.degrees;
         const inches = args?.inches;
         const cmdByte = CMD_BYTES[fc.name!]!;
+        const value = degrees ?? inches ?? 0;
 
-        // 160ms per 15 degrees; 200ms per inch (tune as needed)
-        const MS_PER_15_DEG = 160;
-        const MS_PER_INCH = 200;
-        const durationMs = degrees != null
-          ? Math.round((degrees / 15) * MS_PER_15_DEG)
-          : Math.round((inches ?? 1) * MS_PER_INCH);
-
-        console.log(`[agent] Tool: ${fc.name}(${degrees ?? inches})`);
+        console.log(`[agent] Tool: ${fc.name}(${value})`);
 
         // Update position tracker
         if (fc.name === "turn_left") {
@@ -260,7 +254,7 @@ export class RCCarAgent {
         console.log(`[pos] ${this.tracker.getStatusString()}`);
 
         if (this.debug) {
-          console.log(`[debug] Would send 0x${cmdByte.toString(16).padStart(2, "0")} for ${durationMs}ms then stop`);
+          console.log(`[debug] Would send [0x${cmdByte.toString(16).padStart(2, "0")}, ${value}]`);
           functionResponses.push({
             id: fc.id!,
             name: fc.name!,
@@ -268,7 +262,7 @@ export class RCCarAgent {
           });
         } else {
           try {
-            const result = await this.serial!.sendTimedCommand(cmdByte, durationMs);
+            const result = await this.serial!.sendCommand(cmdByte, value);
             functionResponses.push({
               id: fc.id!,
               name: fc.name!,
