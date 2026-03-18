@@ -194,7 +194,8 @@ export class RCCarAgent {
           await this.handleToolCall(call);
         }
 
-        // Send fresh camera frame so the model sees the result of the action
+        // Wait for camera to capture a post-movement frame
+        await this.camera.waitForNewFrame();
         this.sendCameraFrame();
         this.resumeVideoStream();
 

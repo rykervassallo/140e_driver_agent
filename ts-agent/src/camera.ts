@@ -16,6 +16,7 @@ export class Camera {
   private ffplay: ChildProcess | null = null;
   private latestFrame: Buffer | null = null;
   private buffer: Buffer = Buffer.alloc(0);
+  private frameSeq = 0;
 
   constructor(
     private deviceIndex: string = "0",
@@ -103,6 +104,7 @@ export class Camera {
 
       // Extract the complete JPEG frame (including the EOI marker)
       this.latestFrame = this.buffer.subarray(soiIdx, eoiIdx + 2);
+      this.frameSeq++;
 
       // Trim the buffer past this frame
       this.buffer = this.buffer.subarray(eoiIdx + 2);
@@ -116,6 +118,24 @@ export class Camera {
 
   getLatestFrame(): Buffer | null {
     return this.latestFrame;
+  }
+
+  /** Wait until ffmpeg produces a frame newer than the current one. */
+  waitForNewFrame(timeoutMs = 1000): Promise<Buffer | null> {
+    const seqAtCall = this.frameSeq;
+    return new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (this.frameSeq > seqAtCall) {
+          clearInterval(check);
+          clearTimeout(to);
+          resolve(this.latestFrame);
+        }
+      }, 50);
+      const to = setTimeout(() => {
+        clearInterval(check);
+        resolve(this.latestFrame);
+      }, timeoutMs);
+    });
   }
 
   stop(): void {
