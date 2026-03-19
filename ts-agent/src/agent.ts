@@ -115,10 +115,7 @@ export class RCCarAgent {
         },
       });
 
-      // Send initial camera frame
-      this.sendCameraFrame();
-
-      // Send initial user task
+      // Send initial user task (no camera frame yet — wait for user voice input)
       rt.send({
         type: "conversation.item.create",
         item: {
@@ -131,8 +128,7 @@ export class RCCarAgent {
       // Trigger first response
       rt.send({ type: "response.create" });
 
-      // Start concurrent audio + video input streams
-      this.startVideoStream();
+      // Start audio stream only — video stream starts after first user voice input
       this.startAudioStream();
     });
 
@@ -273,6 +269,13 @@ export class RCCarAgent {
         if (event.transcript) {
           this.rollout.inputTranscription(event.transcript);
           console.log(`[you]   ${event.transcript}`);
+
+          // Start video stream on first user voice input so the model
+          // has visual context for its next response
+          if (!this.frameInterval) {
+            this.sendCameraFrame();
+            this.startVideoStream();
+          }
         }
       },
     );
