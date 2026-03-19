@@ -26,11 +26,11 @@ export class RCCarAgent {
   private frameInterval: ReturnType<typeof setInterval> | null = null;
   private micInstance: ReturnType<typeof Mic> | null = null;
   private audioChunks: Buffer[] = [];
-  private pendingToolCalls: Array<{
+  private pendingToolCall: {
     call_id: string;
     name: string;
     arguments: string;
-  }> = [];
+  } | null = null;
   private frameCounter = 0;
   private lastFrameItemId: string | null = null;
   private resolveDone: (() => void) | null = null;
@@ -158,48 +158,45 @@ export class RCCarAgent {
     // --- Tool calls ---
 
     rt.on("response.function_call_arguments.done", (event) => {
-      this.pendingToolCalls.push({
-        call_id: event.call_id,
-        name: event.name,
-        arguments: event.arguments,
-      });
+      if (!this.pendingToolCall) {
+        this.pendingToolCall = {
+          call_id: event.call_id,
+          name: event.name,
+          arguments: event.arguments,
+        };
+      }
     });
 
     rt.on("response.done", async (event) => {
       this.rollout.turnComplete();
 
-      // If response was cancelled (e.g. interrupted) or failed, drop pending calls
+      // If response was cancelled (e.g. interrupted) or failed, drop pending call
       const response = (event as Record<string, any>).response;
       if (
         response?.status === "cancelled" ||
         response?.status === "failed"
       ) {
-        if (this.pendingToolCalls.length > 0) {
-          const ids = this.pendingToolCalls.map((c) => c.call_id);
-          this.rollout.toolCallCancellation(ids);
-          this.pendingToolCalls = [];
+        if (this.pendingToolCall) {
+          this.rollout.toolCallCancellation([this.pendingToolCall.call_id]);
+          this.pendingToolCall = null;
         }
         return;
       }
 
-      // Process any pending tool calls
-      if (this.pendingToolCalls.length > 0) {
-        const calls = [...this.pendingToolCalls];
-        this.pendingToolCalls = [];
+      // Execute the single pending tool call, then send a fresh camera frame
+      if (this.pendingToolCall) {
+        const call = this.pendingToolCall;
+        this.pendingToolCall = null;
 
-        // Pause periodic frames during tool execution
         this.pauseVideoStream();
-
-        for (const call of calls) {
-          await this.handleToolCall(call);
-        }
+        await this.handleToolCall(call);
 
         // Wait for camera to capture a post-movement frame
         await this.camera.waitForNewFrame();
         this.sendCameraFrame();
         this.resumeVideoStream();
 
-        // Trigger model to continue (process tool results)
+        // Trigger model to continue with tool result + new frame
         rt.send({ type: "response.create" });
       }
     });

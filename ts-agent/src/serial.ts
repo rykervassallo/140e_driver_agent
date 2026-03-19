@@ -49,8 +49,8 @@ export class SerialConnection {
     }
   }
 
-  /** Send a command byte followed by a value byte (0-255) */
-  async sendCommand(cmdByte: number, value: number): Promise<string> {
+  /** Send a command byte followed by a value byte, then block until ACK (0x06) is received. */
+  async sendCommand(cmdByte: number, value: number, timeoutMs = 15000): Promise<string> {
     if (!this.port?.isOpen) {
       await this.connect();
     }
@@ -59,7 +59,32 @@ export class SerialConnection {
     const buf = Buffer.from([cmdByte, clamped]);
     this.port!.write(buf);
     this.port!.drain();
-    console.log(`[serial] Sent: [0x${cmdByte.toString(16).padStart(2, "0")}, ${clamped}]`);
-    return "DONE";
+    console.log(`[serial] Sent: [0x${cmdByte.toString(16).padStart(2, "0")}, ${clamped}], waiting for ACK...`);
+
+    return new Promise<string>((resolve, reject) => {
+      const onData = (data: Buffer) => {
+        for (const byte of data) {
+          if (byte === 0x06) {
+            cleanup();
+            console.log("[serial] ACK received");
+            resolve("DONE");
+            return;
+          }
+        }
+      };
+
+      const to = setTimeout(() => {
+        cleanup();
+        console.warn("[serial] ACK timeout");
+        resolve("DONE (timeout, no ACK)");
+      }, timeoutMs);
+
+      const cleanup = () => {
+        this.port!.off("data", onData);
+        clearTimeout(to);
+      };
+
+      this.port!.on("data", onData);
+    });
   }
 }
