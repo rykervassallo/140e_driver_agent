@@ -77,4 +77,21 @@ export const TOOL_DECLARATIONS = [
       required: ["inches"],
     },
   },
+  {
+    type: "function" as const,
+    name: "task_complete",
+    description:
+      "Call this ONLY when the task is fully complete (target is within arm's reach and fills most of the frame) or you are completely stuck and cannot make further progress. This ends the session.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description:
+            "Brief explanation of why the task is complete or why you cannot continue.",
+        },
+      },
+      required: ["reason"],
+    },
+  },
 ];

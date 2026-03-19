@@ -10,6 +10,7 @@ import { DISTANCE_MULTIPLIER, MS_PER_DEGREE, MS_PER_INCH, MIN_MOVEMENT_DELAY_MS 
 import { RolloutLogger } from "./rollout.js";
 
 const MODEL = "gpt-realtime" as const;
+const MAX_IDLE_TURNS = 5;
 
 export interface AgentOptions {
   serialPort?: string;
@@ -35,6 +36,7 @@ export class RCCarAgent {
   private lastFrameItemId: string | null = null;
   private resolveDone: (() => void) | null = null;
   private rollout: RolloutLogger = new RolloutLogger();
+  private consecutiveIdleTurns = 0;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -187,6 +189,17 @@ export class RCCarAgent {
       if (this.pendingToolCall) {
         const call = this.pendingToolCall;
         this.pendingToolCall = null;
+        this.consecutiveIdleTurns = 0;
+
+        // task_complete ends the session — no serial command needed
+        if (call.name === "task_complete") {
+          const args = JSON.parse(call.arguments);
+          console.log(`\n[agent] Task complete: ${args.reason}\n`);
+          this.rollout.toolCall(call.name, args, call.call_id);
+          this.rollout.toolResponse(call.name, "session ended", call.call_id);
+          this.cleanup();
+          return;
+        }
 
         this.pauseVideoStream();
         await this.handleToolCall(call);
@@ -197,6 +210,41 @@ export class RCCarAgent {
         this.resumeVideoStream();
 
         // Trigger model to continue with tool result + new frame
+        rt.send({ type: "response.create" });
+      } else {
+        // Model responded with text only and no tool call — nudge it to continue
+        this.consecutiveIdleTurns++;
+
+        if (this.consecutiveIdleTurns >= MAX_IDLE_TURNS) {
+          console.log(
+            `[agent] Model idle for ${MAX_IDLE_TURNS} consecutive turns, ending session`,
+          );
+          this.cleanup();
+          return;
+        }
+
+        console.log(
+          `[agent] No tool call — nudging model to continue (${this.consecutiveIdleTurns}/${MAX_IDLE_TURNS})`,
+        );
+
+        // Brief delay to let any user voice input start (which would cancel this)
+        await new Promise((r) => setTimeout(r, 500));
+        if (!this.rt) return;
+
+        this.sendCameraFrame();
+        rt.send({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "You have not called task_complete, so the task is NOT finished. Look at the camera frame and make your next move. Keep driving toward the target. If truly done, call task_complete.",
+              },
+            ],
+          },
+        });
         rt.send({ type: "response.create" });
       }
     });
