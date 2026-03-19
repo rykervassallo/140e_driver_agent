@@ -38,6 +38,8 @@ export class RCCarAgent {
   private rollout: RolloutLogger = new RolloutLogger();
   private consecutiveIdleTurns = 0;
   private taskStarted = false;
+  private processingToolCall = false;
+  private videoStreamInitialized = false;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -182,6 +184,18 @@ export class RCCarAgent {
         return;
       }
 
+      // If a tool call is already being executed, drop any new ones to avoid
+      // concurrent serial commands and conflicting response.create calls
+      if (this.processingToolCall) {
+        if (this.pendingToolCall) {
+          console.log(
+            `[agent] Dropping tool call ${this.pendingToolCall.name} — previous tool still executing`,
+          );
+          this.pendingToolCall = null;
+        }
+        return;
+      }
+
       // Execute the single pending tool call, then send a fresh camera frame
       if (this.pendingToolCall) {
         const call = this.pendingToolCall;
@@ -199,13 +213,21 @@ export class RCCarAgent {
           return;
         }
 
+        this.processingToolCall = true;
         this.pauseVideoStream();
         await this.handleToolCall(call);
+
+        // Guard: session may have closed while awaiting serial
+        if (!this.rt) {
+          this.processingToolCall = false;
+          return;
+        }
 
         // Wait for camera to capture a post-movement frame
         await this.camera.waitForNewFrame();
         this.sendCameraFrame();
         this.resumeVideoStream();
+        this.processingToolCall = false;
 
         // Trigger model to continue with tool result + new frame
         rt.send({ type: "response.create" });
@@ -272,7 +294,8 @@ export class RCCarAgent {
 
           // Start video stream on first user voice input so the model
           // has visual context for its next response
-          if (!this.frameInterval) {
+          if (!this.videoStreamInitialized) {
+            this.videoStreamInitialized = true;
             this.sendCameraFrame();
             this.startVideoStream();
           }
