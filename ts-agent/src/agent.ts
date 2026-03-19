@@ -37,6 +37,7 @@ export class RCCarAgent {
   private resolveDone: (() => void) | null = null;
   private rollout: RolloutLogger = new RolloutLogger();
   private consecutiveIdleTurns = 0;
+  private taskStarted = false;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -190,6 +191,7 @@ export class RCCarAgent {
         const call = this.pendingToolCall;
         this.pendingToolCall = null;
         this.consecutiveIdleTurns = 0;
+        this.taskStarted = true;
 
         // task_complete ends the session — no serial command needed
         if (call.name === "task_complete") {
@@ -211,7 +213,7 @@ export class RCCarAgent {
 
         // Trigger model to continue with tool result + new frame
         rt.send({ type: "response.create" });
-      } else {
+      } else if (this.taskStarted) {
         // Model responded with text only and no tool call — nudge it to continue
         this.consecutiveIdleTurns++;
 
