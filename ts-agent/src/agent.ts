@@ -440,6 +440,7 @@ export class RCCarAgent {
         console.log(
           `[debug] Would send [0x${cmdByte.toString(16).padStart(2, "0")}, ${value}] (wait ${delayMs}ms)`,
         );
+        await new Promise((r) => setTimeout(r, delayMs));
         result = `DONE (debug)`;
       } else {
         try {
