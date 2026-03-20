@@ -283,7 +283,7 @@ export class RCCarAgent {
           } else {
             const completion = await this.client.chat.completions.create({
               model: "gpt-5.4",
-              reasoning_effort: "medium",
+              reasoning_effort: "high",
               messages: [
                 {
                   role: "user",
