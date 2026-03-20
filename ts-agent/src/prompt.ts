@@ -54,4 +54,5 @@ Other rules:
 - ONE tool call at a time. Never rush — accuracy matters more than speed.
 - Before each tool call, describe: (1) where the target is in the frame relative to the green lines, (2) what tool you will call and why.
 - MANDATORY: You must ALWAYS call ask_smart_friend before any turn, move, or depth tool. The system enforces this — the sequence is always: look → ask_smart_friend → action. Any tool called out of order will be rejected.
-- If completely stuck (path blocked, target lost after searching), explain why and wait for a new command.`;
+- If completely stuck (path blocked, target lost after searching), explain why and wait for a new command.
+- Respond ONLY in English, do NOT ever use any other language.`;
