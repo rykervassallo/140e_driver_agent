@@ -1,4 +1,4 @@
-export const DISTANCE_MULTIPLIER = 1.65;
+export const DISTANCE_MULTIPLIER = (6 / 5);
 
 // Estimated time for the car to physically complete a movement.
 // Tune these based on actual car speed.
