@@ -42,6 +42,7 @@ export class RCCarAgent {
   private consecutiveIdleTurns = 0;
   private taskStarted = false;
   private processingToolCall = false;
+  private lastDepthFrame: Buffer | null = null;
   private videoStreamInitialized = false;
   private framesDir: string;
   private frameSaveSeq = 0;
@@ -285,7 +286,8 @@ export class RCCarAgent {
             });
           } else {
             const { annotated } = await getDepthGrid(frame);
-            const result = "Grid overlay applied (4x3, cells 1-12 left-to-right top-to-bottom). Call get_grid_depth(cell_id) to get the depth in inches for a cell.";
+            this.lastDepthFrame = annotated;
+            const result = "Grid overlay applied (4x3, cells 1-12 left-to-right top-to-bottom). Call get_grid_depth(cell_id) to get the depth in inches for a cell, or call ask_smart_friend with use_depth_frame=true to ask which cell the target is in.";
             this.rollout.toolResponse(call.name, result, call.call_id);
             this.rt!.send({
               type: "conversation.item.create",
@@ -348,6 +350,56 @@ export class RCCarAgent {
           this.rt!.send({
             type: "conversation.item.create",
             item: { type: "function_call_output", call_id: call.call_id, output: reject },
+          });
+          this.sendCameraFrame();
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
+        // "ask_smart_friend" — consult GPT-5.4 with the current frame (or depth grid frame)
+        if (call.name === "ask_smart_friend") {
+          const friendArgs = JSON.parse(call.arguments);
+          const useDepth = friendArgs.use_depth_frame === true;
+          console.log(`[agent] Tool: ask_smart_friend("${friendArgs.question}"${useDepth ? ", depth_frame" : ""})`);
+          this.rollout.toolCall(call.name, friendArgs, call.call_id);
+
+          const frame = useDepth && this.lastDepthFrame
+            ? this.lastDepthFrame
+            : this.camera.getLatestFrame();
+          let result: string;
+          if (!frame) {
+            result = useDepth
+              ? "No depth frame available — call get_depth_grid first"
+              : "No camera frame available";
+          } else {
+            const completion = await this.client.chat.completions.create({
+              model: "gpt-5.4",
+              max_tokens: 300,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: friendArgs.question },
+                    {
+                      type: "image_url",
+                      image_url: {
+                        url: `data:image/jpeg;base64,${frame.toString("base64")}`,
+                      },
+                    },
+                  ],
+                },
+              ],
+            });
+            result = completion.choices[0]?.message?.content ?? "No response";
+            console.log(`[smart_friend] ${result}`);
+          }
+
+          this.rollout.toolResponse(call.name, result, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: call.call_id, output: result },
           });
           this.sendCameraFrame();
           this.resumeVideoStream();

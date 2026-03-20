@@ -139,6 +139,27 @@ export const TOOL_DECLARATIONS = [
   },
   {
     type: "function" as const,
+    name: "ask_smart_friend",
+    description:
+      "Send the current camera frame to a smarter vision model with a question. Use this when you need help identifying objects, understanding the scene, or making complex spatial judgments. Set use_depth_frame=true after calling get_depth_grid to send the numbered grid overlay instead — the smart friend can tell you which cell the target is in.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "What you want to know about the current camera frame.",
+        },
+        use_depth_frame: {
+          type: "boolean",
+          description:
+            "If true, send the depth grid frame (with numbered cells) instead of the raw camera frame. Must call get_depth_grid first.",
+        },
+      },
+      required: ["question"],
+    },
+  },
+  {
+    type: "function" as const,
     name: "task_complete",
     description:
       "Call this ONLY when the task is fully complete (target is within arm's reach and fills most of the frame) or you are completely stuck and cannot make further progress. This ends the session.",
