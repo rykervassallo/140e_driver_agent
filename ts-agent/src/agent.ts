@@ -45,6 +45,7 @@ export class RCCarAgent {
   private videoStreamInitialized = false;
   private framesDir: string;
   private frameSaveSeq = 0;
+  private lastToolName: string | null = null;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -258,6 +259,7 @@ export class RCCarAgent {
           });
           await this.camera.waitForFreshFrame();
           this.sendCameraFrame();
+          this.lastToolName = "look";
           this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
@@ -291,6 +293,7 @@ export class RCCarAgent {
             });
             this.sendAnnotatedFrame(annotated);
           }
+          this.lastToolName = "get_depth_grid";
           this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
@@ -313,6 +316,40 @@ export class RCCarAgent {
             item: { type: "function_call_output", call_id: call.call_id, output: result },
           });
           this.sendCameraFrame();
+          this.lastToolName = "get_grid_depth";
+          this.lastToolName = "get_grid_depth";
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
+        // GATE: enforce strict tool ordering
+        // Valid sequences:
+        //   look → turn_left/turn_right (then must look again)
+        //   look → get_depth_grid → get_grid_depth → move_forward
+        //   look is always allowed
+        const ALLOWED_AFTER: Record<string, string[]> = {
+          turn_left: ["look"],
+          turn_right: ["look"],
+          move_forward: ["get_grid_depth"],
+          move_backward: ["get_grid_depth"],
+          get_depth_grid: ["look"],
+          get_grid_depth: ["get_depth_grid"],
+        };
+
+        const allowedPrev = ALLOWED_AFTER[call.name];
+        if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
+          const expected = allowedPrev.join(" or ");
+          console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName})`);
+          const reject = `REJECTED: ${call.name} requires ${expected} immediately before it. You called ${this.lastToolName ?? "nothing"} instead. Follow the sequence: look → get_depth_grid → get_grid_depth → move_forward.`;
+          this.rollout.toolCall(call.name, JSON.parse(call.arguments), call.call_id);
+          this.rollout.toolResponse(call.name, reject, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: call.call_id, output: reject },
+          });
+          this.sendCameraFrame();
           this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
@@ -330,6 +367,7 @@ export class RCCarAgent {
         // Wait for fresh post-movement frame (skip stale buffered frames)
         await this.camera.waitForFreshFrame();
         this.sendCameraFrame();
+        this.lastToolName = call.name;
         this.resumeVideoStream();
         this.processingToolCall = false;
 
