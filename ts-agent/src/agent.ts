@@ -376,7 +376,6 @@ export class RCCarAgent {
           } else {
             const completion = await this.client.chat.completions.create({
               model: "gpt-5.4",
-              max_tokens: 300,
               messages: [
                 {
                   role: "user",
