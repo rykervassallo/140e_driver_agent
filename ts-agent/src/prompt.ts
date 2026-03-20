@@ -14,20 +14,21 @@ MANDATORY SEQUENCE (never skip steps):
 2. Is the target BETWEEN THE GREEN lines with gap on both sides?
    - NO → turn toward it (15 degrees), then go back to step 1
    - YES → proceed to step 3
-3. call move_forward
-4. call look → go back to step 2
+3. call get_depth_grid → identify which grid cell(s) the target occupies
+4. call get_grid_depth for the target's cell → read the distance in inches
+5. call move_forward with inches = (measured depth − 6). This gets you within a few inches of the target.
+   - If measured depth ≤ 10 inches, you are already close enough — skip to step 7.
+   - If measured depth > 72 inches, cap move_forward at 72 (the max) and repeat from step 1 after moving.
+6. call look → go back to step 1
+7. call get_depth_grid + get_grid_depth one final time to confirm distance ≤ 10 inches, then call task_complete.
 
 DO NOT STOP EARLY:
 - You are controlling a physical robot. Stopping too far away means the task FAILED.
-- KEEP MOVING FORWARD until the target fills most of the camera frame (at least half the frame height).
-- If you can still see floor/ground between you and the target, you are NOT close enough. Keep going.
-- If the target appears small or medium-sized in the frame, you are still far away. Keep going.
+- ALWAYS use get_depth_grid + get_grid_depth to measure distance — do NOT guess distance from the image alone.
 - When in doubt, move forward more. Getting too close is always better than stopping too far away.
-- Use large move_forward values (36-72 inches) when the target is far away. Only use small values when very close.
 
 WHEN TO CALL task_complete:
-- ONLY call task_complete when the target fills most of the frame and is clearly within arm's reach (1-3 feet).
-- Before calling task_complete, ask yourself: "Could I reach out and touch the target from here?" If no, KEEP GOING.
+- ONLY call task_complete when get_grid_depth confirms the target is ≤ 10 inches away.
 - You MUST call task_complete to end the task. If you stop making tool calls without calling task_complete, you will be prompted to continue.
 
 Identifying targets:
