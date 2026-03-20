@@ -267,76 +267,18 @@ export class RCCarAgent {
           return;
         }
 
-        // "get_depth_grid" — run depth model, send annotated grid frame
-        if (call.name === "get_depth_grid") {
-          const depthArgs = JSON.parse(call.arguments);
-          if (depthArgs.reasoning) {
-            console.log(`[agent] ${depthArgs.reasoning}`);
-          }
-          console.log("[agent] Tool: get_depth_grid()");
-          this.rollout.toolCall(call.name, depthArgs, call.call_id);
-
-          const frame = this.camera.getLatestFrame();
-          if (!frame) {
-            const err = "No camera frame available";
-            this.rollout.toolResponse(call.name, err, call.call_id);
-            this.rt!.send({
-              type: "conversation.item.create",
-              item: { type: "function_call_output", call_id: call.call_id, output: err },
-            });
-          } else {
-            const { annotated } = await getDepthGrid(frame);
-            this.lastDepthFrame = annotated;
-            const result = "Grid overlay applied (4x3, cells 1-12 left-to-right top-to-bottom). Call get_grid_depth(cell_id) to get the depth in inches for a cell, or call ask_smart_friend with use_depth_frame=true to ask which cell the target is in.";
-            this.rollout.toolResponse(call.name, result, call.call_id);
-            this.rt!.send({
-              type: "conversation.item.create",
-              item: { type: "function_call_output", call_id: call.call_id, output: result },
-            });
-            this.sendAnnotatedFrame(annotated);
-          }
-          this.lastToolName = "get_depth_grid";
-          this.resumeVideoStream();
-          this.processingToolCall = false;
-          rt.send({ type: "response.create" });
-          return;
-        }
-
-        // "get_grid_depth" — return cached depth for a cell
-        if (call.name === "get_grid_depth") {
-          const depthArgs = JSON.parse(call.arguments);
-          console.log(`[agent] Tool: get_grid_depth(${depthArgs.cell_id})`);
-          this.rollout.toolCall(call.name, depthArgs, call.call_id);
-
-          const depth = getGridDepth(depthArgs.cell_id);
-          const result = depth !== null
-            ? `Cell ${depthArgs.cell_id}: ${depth} inches`
-            : `No depth data — call get_depth_grid first`;
-          this.rollout.toolResponse(call.name, result, call.call_id);
-          this.rt!.send({
-            type: "conversation.item.create",
-            item: { type: "function_call_output", call_id: call.call_id, output: result },
-          });
-          this.sendCameraFrame();
-          this.lastToolName = "get_grid_depth";
-          this.resumeVideoStream();
-          this.processingToolCall = false;
-          rt.send({ type: "response.create" });
-          return;
-        }
-
         // GATE: enforce strict tool ordering
         // Valid sequences:
-        //   look → turn_left/turn_right (then must look again)
-        //   look → get_depth_grid → get_grid_depth → move_forward
+        //   look → ask_smart_friend → turn/get_depth_grid
+        //   get_depth_grid → ask_smart_friend(depth) → get_grid_depth → move_forward
         //   look is always allowed
         const ALLOWED_AFTER: Record<string, string[]> = {
-          turn_left: ["look"],
-          turn_right: ["look"],
+          ask_smart_friend: ["look", "get_depth_grid"],
+          turn_left: ["ask_smart_friend"],
+          turn_right: ["ask_smart_friend"],
+          get_grid_depth: ["ask_smart_friend"],
           move_forward: ["get_grid_depth"],
           move_backward: ["get_grid_depth"],
-          get_depth_grid: ["look"],
-          get_grid_depth: ["get_depth_grid"],
         };
 
         const allowedPrev = ALLOWED_AFTER[call.name];
@@ -400,6 +342,65 @@ export class RCCarAgent {
             item: { type: "function_call_output", call_id: call.call_id, output: result },
           });
           this.sendCameraFrame();
+          this.lastToolName = "ask_smart_friend";
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
+        // "get_depth_grid" — run depth model, send annotated grid frame
+        if (call.name === "get_depth_grid") {
+          const depthArgs = JSON.parse(call.arguments);
+          if (depthArgs.reasoning) {
+            console.log(`[agent] ${depthArgs.reasoning}`);
+          }
+          console.log("[agent] Tool: get_depth_grid()");
+          this.rollout.toolCall(call.name, depthArgs, call.call_id);
+
+          const frame = this.camera.getLatestFrame();
+          if (!frame) {
+            const err = "No camera frame available";
+            this.rollout.toolResponse(call.name, err, call.call_id);
+            this.rt!.send({
+              type: "conversation.item.create",
+              item: { type: "function_call_output", call_id: call.call_id, output: err },
+            });
+          } else {
+            const { annotated } = await getDepthGrid(frame);
+            this.lastDepthFrame = annotated;
+            const result = "Grid overlay applied (4x3, cells 1-12 left-to-right top-to-bottom). Call ask_smart_friend with use_depth_frame=true to ask which cell the target is in, then call get_grid_depth with the cell number.";
+            this.rollout.toolResponse(call.name, result, call.call_id);
+            this.rt!.send({
+              type: "conversation.item.create",
+              item: { type: "function_call_output", call_id: call.call_id, output: result },
+            });
+            this.sendAnnotatedFrame(annotated);
+          }
+          this.lastToolName = "get_depth_grid";
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
+        // "get_grid_depth" — return cached depth for a cell
+        if (call.name === "get_grid_depth") {
+          const depthArgs = JSON.parse(call.arguments);
+          console.log(`[agent] Tool: get_grid_depth(${depthArgs.cell_id})`);
+          this.rollout.toolCall(call.name, depthArgs, call.call_id);
+
+          const depth = getGridDepth(depthArgs.cell_id);
+          const result = depth !== null
+            ? `Cell ${depthArgs.cell_id}: ${depth} inches`
+            : `No depth data — call get_depth_grid first`;
+          this.rollout.toolResponse(call.name, result, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: call.call_id, output: result },
+          });
+          this.sendCameraFrame();
+          this.lastToolName = "get_grid_depth";
           this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });

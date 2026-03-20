@@ -21,18 +21,19 @@ SEARCH PHASE — find the target before anything else:
 IMPORTANT: Do NOT trust your own vision to identify or locate the target. ALWAYS use ask_smart_friend — it has much better visual understanding than you do.
 
 APPROACH SEQUENCE — only after target is visible (never skip steps):
-1. call look → study the frame
-2. Is the target BETWEEN THE GREEN lines with gap on both sides?
-   - NO → turn toward it (15 degrees), then go back to step 1
-   - YES → proceed to step 3
-3. call get_depth_grid → get the numbered grid overlay
-4. call ask_smart_friend with use_depth_frame=true: "Which numbered grid cell contains the [target]?" → the smart friend tells you the cell number
-5. call get_grid_depth for that cell → read the distance in inches
-6. call move_forward with inches = (measured depth − 6). This gets you within a few inches of the target.
-   - If measured depth ≤ 10 inches, you are already close enough — skip to step 8.
+1. call look → get a fresh frame
+2. call ask_smart_friend: "Is the [target] fully between the two green vertical lines with a visible gap on both sides? If not, which direction should I turn and by how many degrees?"
+3. Based on the smart friend's answer:
+   - NOT CENTERED → turn toward it, then go back to step 1
+   - CENTERED → proceed to step 4
+4. call get_depth_grid → get the numbered grid overlay
+5. call ask_smart_friend with use_depth_frame=true: "Which numbered grid cell contains the [target]?" → the smart friend tells you the cell number
+6. call get_grid_depth for that cell → read the distance in inches
+7. call move_forward with inches = (measured depth − 6). This gets you within a few inches of the target.
+   - If measured depth ≤ 10 inches, you are already close enough — skip to step 9.
    - If measured depth > 72 inches, cap move_forward at 72 (the max) and repeat from step 1 after moving.
-7. call look → go back to step 1
-8. call get_depth_grid + ask_smart_friend(use_depth_frame=true) + get_grid_depth one final time to confirm distance ≤ 10 inches, then call task_complete.
+8. call look → go back to step 1
+9. call look + ask_smart_friend + get_depth_grid + ask_smart_friend(use_depth_frame=true) + get_grid_depth one final time to confirm distance ≤ 10 inches, then call task_complete.
 
 DO NOT STOP EARLY:
 - You are controlling a physical robot. Stopping too far away means the task FAILED.
@@ -52,5 +53,5 @@ Using ask_smart_friend:
 Other rules:
 - ONE tool call at a time. Never rush — accuracy matters more than speed.
 - Before each tool call, describe: (1) where the target is in the frame relative to the green lines, (2) what tool you will call and why.
-- MANDATORY: After every turn_left or turn_right, your NEXT tool call MUST be the look tool. The system enforces this — any other tool call will be rejected until you call look. "look" means calling the look tool, not just observing the frame.
+- MANDATORY: You must ALWAYS call ask_smart_friend before any turn, move, or depth tool. The system enforces this — the sequence is always: look → ask_smart_friend → action. Any tool called out of order will be rejected.
 - If completely stuck (path blocked, target lost after searching), call task_complete and explain why.`;
