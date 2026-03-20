@@ -225,16 +225,6 @@ export class RCCarAgent {
         this.consecutiveIdleTurns = 0;
         this.taskStarted = true;
 
-        // task_complete ends the session — no serial command needed
-        if (call.name === "task_complete") {
-          const args = JSON.parse(call.arguments);
-          console.log(`\n[agent] Task complete: ${args.reason}\n`);
-          this.rollout.toolCall(call.name, args, call.call_id);
-          this.rollout.toolResponse(call.name, "session ended", call.call_id);
-          this.cleanup();
-          return;
-        }
-
         this.processingToolCall = true;
 
         this.saveFrame(call.name);
@@ -464,7 +454,7 @@ export class RCCarAgent {
             content: [
               {
                 type: "input_text",
-                text: "You have not called task_complete, so the task is NOT finished. Look at the camera frame and make your next move. Keep driving toward the target. If truly done, call task_complete.",
+                text: "You stopped making tool calls. Look at the camera frame and continue working on the task. Call ask_smart_friend if you need help deciding what to do next.",
               },
             ],
           },
