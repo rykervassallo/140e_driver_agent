@@ -107,6 +107,38 @@ export const TOOL_DECLARATIONS = [
   },
   {
     type: "function" as const,
+    name: "get_depth_grid",
+    description:
+      "Capture the current frame with a numbered grid overlay (cells 1-12, 4 columns x 3 rows). Use this to see which grid cells contain objects you want to measure, then call get_grid_depth with the cell number.",
+    parameters: {
+      type: "object",
+      properties: {
+        reasoning: {
+          type: "string",
+          description: "What you want to measure and why.",
+        },
+      },
+      required: ["reasoning"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "get_grid_depth",
+    description:
+      "Get the median depth in inches for a specific grid cell. Must call get_depth_grid first to see the numbered grid overlay.",
+    parameters: {
+      type: "object",
+      properties: {
+        cell_id: {
+          type: "integer",
+          description: "Grid cell number (1-12).",
+        },
+      },
+      required: ["cell_id"],
+    },
+  },
+  {
+    type: "function" as const,
     name: "task_complete",
     description:
       "Call this ONLY when the task is fully complete (target is within arm's reach and fills most of the frame) or you are completely stuck and cannot make further progress. This ends the session.",

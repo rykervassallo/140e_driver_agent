@@ -10,6 +10,7 @@ import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import { DISTANCE_MULTIPLIER, MS_PER_DEGREE, MS_PER_INCH, MIN_MOVEMENT_DELAY_MS } from "./constants.js";
 import { RolloutLogger } from "./rollout.js";
+import { startDepthServer, stopDepthServer, getDepthGrid, getGridDepth } from "./depth.js";
 
 const MODEL = "gpt-realtime" as const;
 const MAX_IDLE_TURNS = 5;
@@ -76,6 +77,10 @@ export class RCCarAgent {
     // Wait a moment for ffmpeg to start producing frames
     await new Promise((r) => setTimeout(r, 2000));
 
+    // Start depth estimation sidecar (model loads in background)
+    console.log("[agent] Loading depth model...");
+    await startDepthServer();
+
     // Connect to OpenAI Realtime API
     this.rt = await OpenAIRealtimeWebSocket.create(this.client, {
       model: MODEL,
@@ -117,7 +122,7 @@ export class RCCarAgent {
           audio: {
             input: {
               format: { type: "audio/pcm", rate: 24000 },
-              transcription: { model: "gpt-4o-mini-transcribe" },
+              transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
               turn_detection: {
                 type: "semantic_vad",
                 eagerness: "high",
@@ -259,6 +264,61 @@ export class RCCarAgent {
           return;
         }
 
+        // "get_depth_grid" — run depth model, send annotated grid frame
+        if (call.name === "get_depth_grid") {
+          const depthArgs = JSON.parse(call.arguments);
+          if (depthArgs.reasoning) {
+            console.log(`[agent] ${depthArgs.reasoning}`);
+          }
+          console.log("[agent] Tool: get_depth_grid()");
+          this.rollout.toolCall(call.name, depthArgs, call.call_id);
+
+          const frame = this.camera.getLatestFrame();
+          if (!frame) {
+            const err = "No camera frame available";
+            this.rollout.toolResponse(call.name, err, call.call_id);
+            this.rt!.send({
+              type: "conversation.item.create",
+              item: { type: "function_call_output", call_id: call.call_id, output: err },
+            });
+          } else {
+            const { annotated } = await getDepthGrid(frame);
+            const result = "Grid overlay applied (4x3, cells 1-12 left-to-right top-to-bottom). Call get_grid_depth(cell_id) to get the depth in inches for a cell.";
+            this.rollout.toolResponse(call.name, result, call.call_id);
+            this.rt!.send({
+              type: "conversation.item.create",
+              item: { type: "function_call_output", call_id: call.call_id, output: result },
+            });
+            this.sendAnnotatedFrame(annotated);
+          }
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
+        // "get_grid_depth" — return cached depth for a cell
+        if (call.name === "get_grid_depth") {
+          const depthArgs = JSON.parse(call.arguments);
+          console.log(`[agent] Tool: get_grid_depth(${depthArgs.cell_id})`);
+          this.rollout.toolCall(call.name, depthArgs, call.call_id);
+
+          const depth = getGridDepth(depthArgs.cell_id);
+          const result = depth !== null
+            ? `Cell ${depthArgs.cell_id}: ${depth} inches`
+            : `No depth data — call get_depth_grid first`;
+          this.rollout.toolResponse(call.name, result, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: call.call_id, output: result },
+          });
+          this.sendCameraFrame();
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
         await this.handleToolCall(call);
 
         // Guard: session may have closed while awaiting serial
@@ -376,6 +436,16 @@ export class RCCarAgent {
   private sendCameraFrame(): void {
     const frame = this.camera.getLatestFrame();
     if (!frame || !this.rt) return;
+    this.sendFrame(frame);
+  }
+
+  private sendAnnotatedFrame(jpeg: Buffer): void {
+    if (!this.rt) return;
+    this.sendFrame(jpeg);
+  }
+
+  private sendFrame(jpeg: Buffer): void {
+    if (!this.rt) return;
 
     // Delete the previous frame to keep context lean
     if (this.lastFrameItemId) {
@@ -399,7 +469,7 @@ export class RCCarAgent {
         content: [
           {
             type: "input_image",
-            image_url: `data:image/jpeg;base64,${frame.toString("base64")}`,
+            image_url: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
           },
         ],
       },
@@ -531,6 +601,7 @@ export class RCCarAgent {
       this.micInstance = null;
     }
     this.camera.stop();
+    stopDepthServer();
     this.serial?.disconnect();
     this.audioChunks = [];
     if (this.rt) {
