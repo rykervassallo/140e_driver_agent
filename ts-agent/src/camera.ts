@@ -38,7 +38,7 @@ export class Camera {
       [
         ...this.captureArgs(),
         "-r", "2",
-        "-vf", "scale=512:-1,drawbox=x=206:y=0:w=2:h=ih:color=lime@0.6:t=fill,drawbox=x=304:y=0:w=2:h=ih:color=lime@0.6:t=fill",
+        "-vf", "scale=512:-1,drawbox=x=209:y=0:w=6:h=ih:color=lime@0.8:t=fill,drawbox=x=297:y=0:w=6:h=ih:color=lime@0.8:t=fill",
         "-f", "image2pipe",
         "-vcodec", "mjpeg",
         "-q:v", "5",
@@ -126,6 +126,29 @@ export class Camera {
     return new Promise((resolve) => {
       const check = setInterval(() => {
         if (this.frameSeq > seqAtCall) {
+          clearInterval(check);
+          clearTimeout(to);
+          resolve(this.latestFrame);
+        }
+      }, 50);
+      const to = setTimeout(() => {
+        clearInterval(check);
+        resolve(this.latestFrame);
+      }, timeoutMs);
+    });
+  }
+
+  /**
+   * Wait for a genuinely fresh frame by skipping at least `skipCount` frames
+   * first (to flush stale frames buffered in the ffmpeg pipeline), then
+   * returning the next one after those.
+   */
+  waitForFreshFrame(skipCount = 2, timeoutMs = 3000): Promise<Buffer | null> {
+    const seqAtCall = this.frameSeq;
+    return new Promise((resolve) => {
+      const check = setInterval(() => {
+        // Wait until we've seen skipCount+1 new frames
+        if (this.frameSeq >= seqAtCall + skipCount + 1) {
           clearInterval(check);
           clearTimeout(to);
           resolve(this.latestFrame);

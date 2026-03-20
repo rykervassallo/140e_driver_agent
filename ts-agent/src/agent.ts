@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { OpenAIRealtimeWebSocket } from "openai/realtime/websocket";
 import Mic from "mic";
 import Speaker from "speaker";
+import { writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
 import { SerialConnection } from "./serial.js";
 import { Camera } from "./camera.js";
 import { TOOL_DECLARATIONS, CMD_BYTES } from "./tools.js";
@@ -40,12 +42,26 @@ export class RCCarAgent {
   private taskStarted = false;
   private processingToolCall = false;
   private videoStreamInitialized = false;
+  private framesDir: string;
+  private frameSaveSeq = 0;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     this.debug = options.debug ?? false;
     this.serial = this.debug ? null : new SerialConnection(options.serialPort);
     this.camera = new Camera(options.cameraDevice ?? "0");
+    this.framesDir = join("frames", new Date().toISOString().replace(/[:.]/g, "-"));
+    mkdirSync(this.framesDir, { recursive: true });
+  }
+
+  /** Save the current camera frame to disk for debugging. */
+  private saveFrame(toolName: string): void {
+    const frame = this.camera.getLatestFrame();
+    if (!frame) return;
+    const filename = `${String(this.frameSaveSeq++).padStart(3, "0")}_${toolName}.jpg`;
+    const filepath = join(this.framesDir, filename);
+    writeFileSync(filepath, frame);
+    console.log(`[camera] Saved frame: ${filepath}`);
   }
 
   async run(userPrompt: string): Promise<void> {
@@ -215,6 +231,7 @@ export class RCCarAgent {
 
         this.processingToolCall = true;
         this.pauseVideoStream();
+        this.saveFrame(call.name);
 
         // "look" tool — no movement, just return a fresh frame
         if (call.name === "look") {
@@ -234,7 +251,7 @@ export class RCCarAgent {
               output: lookResult,
             },
           });
-          await this.camera.waitForNewFrame();
+          await this.camera.waitForFreshFrame();
           this.sendCameraFrame();
           this.resumeVideoStream();
           this.processingToolCall = false;
@@ -250,8 +267,8 @@ export class RCCarAgent {
           return;
         }
 
-        // Wait for camera to capture a post-movement frame
-        await this.camera.waitForNewFrame();
+        // Wait for fresh post-movement frame (skip stale buffered frames)
+        await this.camera.waitForFreshFrame();
         this.sendCameraFrame();
         this.resumeVideoStream();
         this.processingToolCall = false;
