@@ -90,9 +90,9 @@ export const TOOL_DECLARATIONS = [
   },
   {
     type: "function" as const,
-    name: "look",
+    name: "check_camera",
     description:
-      "Do nothing — just get a fresh camera frame. Use this to observe the scene before deciding on a movement. You should call this BEFORE calling move_forward to verify the target is between the green guide lines.",
+      "Capture a fresh camera frame. You MUST call this tool before any turn or move — it is the only way to get an updated view. Without calling check_camera, you are looking at a stale frame.",
     parameters: {
       type: "object",
       properties: {

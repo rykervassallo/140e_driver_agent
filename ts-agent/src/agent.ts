@@ -42,7 +42,6 @@ export class RCCarAgent {
   private consecutiveIdleTurns = 0;
   private taskStarted = false;
   private processingToolCall = false;
-  private videoStreamInitialized = false;
   private framesDir: string;
   private frameSaveSeq = 0;
   private lastToolName: string | null = null;
@@ -236,18 +235,17 @@ export class RCCarAgent {
         }
 
         this.processingToolCall = true;
-        this.pauseVideoStream();
         this.saveFrame(call.name);
 
-        // "look" tool — no movement, just return a fresh frame
-        if (call.name === "look") {
+        // "check_camera" tool — no movement, just return a fresh frame
+        if (call.name === "check_camera") {
           const lookArgs = JSON.parse(call.arguments);
           if (lookArgs.reasoning) {
             console.log(`[agent] ${lookArgs.reasoning}`);
           }
-          console.log("[agent] Tool: look()");
+          console.log("[agent] Tool: check_camera()");
           this.rollout.toolCall(call.name, lookArgs, call.call_id);
-          const lookResult = "Frame updated. IMPORTANT: Before your next tool call, you MUST first output a text message describing what you see — where is the target relative to the green lines? How far away is it? What will you do next? Do NOT call a tool without describing the frame first.";
+          const lookResult = "Fresh camera frame captured. IMPORTANT: Before your next tool call, you MUST first output a text message describing what you see — where is the target relative to the green lines? How far away is it? What will you do next? Do NOT call a tool without describing the frame first.";
           this.rollout.toolResponse(call.name, lookResult, call.call_id);
           this.rt!.send({
             type: "conversation.item.create",
@@ -259,8 +257,7 @@ export class RCCarAgent {
           });
           await this.camera.waitForFreshFrame();
           this.sendCameraFrame();
-          this.lastToolName = "look";
-          this.resumeVideoStream();
+          this.lastToolName = "check_camera";
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -294,7 +291,6 @@ export class RCCarAgent {
             this.sendAnnotatedFrame(annotated);
           }
           this.lastToolName = "get_depth_grid";
-          this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -315,10 +311,8 @@ export class RCCarAgent {
             type: "conversation.item.create",
             item: { type: "function_call_output", call_id: call.call_id, output: result },
           });
-          this.sendCameraFrame();
+          // Do NOT send camera frame — model must call check_camera
           this.lastToolName = "get_grid_depth";
-          this.lastToolName = "get_grid_depth";
-          this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -326,15 +320,15 @@ export class RCCarAgent {
 
         // GATE: enforce strict tool ordering
         // Valid sequences:
-        //   look → turn_left/turn_right (then must look again)
-        //   look → get_depth_grid → get_grid_depth → move_forward
-        //   look is always allowed
+        //   check_camera → turn_left/turn_right (then must check_camera again)
+        //   check_camera → get_depth_grid → get_grid_depth → move_forward
+        //   check_camera is always allowed
         const ALLOWED_AFTER: Record<string, string[]> = {
-          turn_left: ["look"],
-          turn_right: ["look"],
+          turn_left: ["check_camera"],
+          turn_right: ["check_camera"],
           move_forward: ["get_grid_depth"],
           move_backward: ["get_grid_depth"],
-          get_depth_grid: ["look"],
+          get_depth_grid: ["check_camera"],
           get_grid_depth: ["get_depth_grid"],
         };
 
@@ -342,15 +336,14 @@ export class RCCarAgent {
         if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
           const expected = allowedPrev.join(" or ");
           console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName})`);
-          const reject = `REJECTED: ${call.name} requires ${expected} immediately before it. You called ${this.lastToolName ?? "nothing"} instead. Follow the sequence: look → get_depth_grid → get_grid_depth → move_forward.`;
+          const reject = `REJECTED: You must call the check_camera tool before ${call.name}. Looking at the image is NOT enough — you must explicitly call the check_camera tool to capture a fresh frame. Required sequence: check_camera → get_depth_grid → get_grid_depth → move_forward. Call check_camera now.`;
           this.rollout.toolCall(call.name, JSON.parse(call.arguments), call.call_id);
           this.rollout.toolResponse(call.name, reject, call.call_id);
           this.rt!.send({
             type: "conversation.item.create",
             item: { type: "function_call_output", call_id: call.call_id, output: reject },
           });
-          this.sendCameraFrame();
-          this.resumeVideoStream();
+          // Do NOT send a camera frame here — the model must call check_camera to get one
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -364,11 +357,10 @@ export class RCCarAgent {
           return;
         }
 
-        // Wait for fresh post-movement frame (skip stale buffered frames)
+        // Wait for car to finish moving before accepting next command
         await this.camera.waitForFreshFrame();
-        this.sendCameraFrame();
+        // Do NOT send camera frame here — model must call check_camera to get one
         this.lastToolName = call.name;
-        this.resumeVideoStream();
         this.processingToolCall = false;
 
         // Trigger model to continue with tool result + new frame
@@ -393,7 +385,6 @@ export class RCCarAgent {
         await new Promise((r) => setTimeout(r, 500));
         if (!this.rt) return;
 
-        this.sendCameraFrame();
         rt.send({
           type: "conversation.item.create",
           item: {
@@ -402,7 +393,7 @@ export class RCCarAgent {
             content: [
               {
                 type: "input_text",
-                text: "You have not called task_complete, so the task is NOT finished. Look at the camera frame and make your next move. Keep driving toward the target. If truly done, call task_complete.",
+                text: "You have not called task_complete, so the task is NOT finished. Call check_camera to see the current view, then make your next move. If truly done, call task_complete.",
               },
             ],
           },
@@ -434,13 +425,7 @@ export class RCCarAgent {
           this.rollout.inputTranscription(event.transcript);
           console.log(`[you]   ${event.transcript}`);
 
-          // Start video stream on first user voice input so the model
-          // has visual context for its next response
-          if (!this.videoStreamInitialized) {
-            this.videoStreamInitialized = true;
-            this.sendCameraFrame();
-            this.startVideoStream();
-          }
+          // No automatic frames — model must call check_camera
         }
       },
     );
@@ -512,27 +497,6 @@ export class RCCarAgent {
         ],
       },
     } as any);
-  }
-
-  private startVideoStream(): void {
-    this.frameInterval = setInterval(() => {
-      this.sendCameraFrame();
-    }, 2000);
-  }
-
-  private pauseVideoStream(): void {
-    if (this.frameInterval) {
-      clearInterval(this.frameInterval);
-      this.frameInterval = null;
-    }
-  }
-
-  private resumeVideoStream(): void {
-    if (!this.frameInterval) {
-      this.frameInterval = setInterval(() => {
-        this.sendCameraFrame();
-      }, 2000);
-    }
   }
 
   private startAudioStream(): void {
