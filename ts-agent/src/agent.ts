@@ -27,7 +27,6 @@ export class RCCarAgent {
   private camera: Camera;
   private debug: boolean;
   private rt: OpenAIRealtimeWebSocket | null = null;
-  private frameInterval: ReturnType<typeof setInterval> | null = null;
   private micInstance: ReturnType<typeof Mic> | null = null;
   private audioChunks: Buffer[] = [];
   private pendingToolCall: {
@@ -43,10 +42,10 @@ export class RCCarAgent {
   private taskStarted = false;
   private processingToolCall = false;
   private lastDepthFrame: Buffer | null = null;
-  private videoStreamInitialized = false;
   private framesDir: string;
   private frameSaveSeq = 0;
   private lastToolName: string | null = null;
+  private consecutiveRejects = 0;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -237,7 +236,7 @@ export class RCCarAgent {
         }
 
         this.processingToolCall = true;
-        this.pauseVideoStream();
+
         this.saveFrame(call.name);
 
         // "look" tool — no movement, just return a fresh frame
@@ -261,48 +260,25 @@ export class RCCarAgent {
           await this.camera.waitForFreshFrame();
           this.sendCameraFrame();
           this.lastToolName = "look";
-          this.resumeVideoStream();
-          this.processingToolCall = false;
-          rt.send({ type: "response.create" });
-          return;
-        }
 
-        // GATE: enforce strict tool ordering
-        // Valid sequences:
-        //   look → ask_smart_friend → turn/get_depth_grid
-        //   get_depth_grid → ask_smart_friend(depth) → get_grid_depth → move_forward
-        //   look is always allowed
-        const ALLOWED_AFTER: Record<string, string[]> = {
-          ask_smart_friend: ["look", "get_depth_grid"],
-          turn_left: ["ask_smart_friend"],
-          turn_right: ["ask_smart_friend"],
-          get_grid_depth: ["ask_smart_friend"],
-          move_forward: ["get_grid_depth"],
-          move_backward: ["get_grid_depth"],
-        };
-
-        const allowedPrev = ALLOWED_AFTER[call.name];
-        if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
-          const expected = allowedPrev.join(" or ");
-          console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName})`);
-          const reject = `REJECTED: You MUST call the ${expected} tool before ${call.name}. Your last tool call was ${this.lastToolName ?? "nothing"}. Call the ${expected} tool NOW — it is a tool call you must make, not just looking at the frame.`;
-          this.rollout.toolCall(call.name, JSON.parse(call.arguments), call.call_id);
-          this.rollout.toolResponse(call.name, reject, call.call_id);
-          this.rt!.send({
-            type: "conversation.item.create",
-            item: { type: "function_call_output", call_id: call.call_id, output: reject },
-          });
-          this.sendCameraFrame();
-          this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
         }
 
         // "ask_smart_friend" — consult GPT-5.4 with the current frame (or depth grid frame)
+        // Auto-look: if the model hasn't called look or get_depth_grid recently,
+        // we automatically wait for a fresh frame before proceeding.
         if (call.name === "ask_smart_friend") {
           const friendArgs = JSON.parse(call.arguments);
           const useDepth = friendArgs.use_depth_frame === true;
+
+          // Auto-look: ensure fresh frame if last tool wasn't look or get_depth_grid
+          if (!useDepth && this.lastToolName !== "look" && this.lastToolName !== "get_depth_grid") {
+            console.log(`[agent] Auto-look before ask_smart_friend (last tool was ${this.lastToolName ?? "nothing"})`);
+            await this.camera.waitForFreshFrame();
+          }
+
           console.log(`[agent] Tool: ask_smart_friend("${friendArgs.question}"${useDepth ? ", depth_frame" : ""})`);
           this.rollout.toolCall(call.name, friendArgs, call.call_id);
 
@@ -317,6 +293,7 @@ export class RCCarAgent {
           } else {
             const completion = await this.client.chat.completions.create({
               model: "gpt-5.4",
+              reasoning_effort: "medium",
               messages: [
                 {
                   role: "user",
@@ -343,11 +320,46 @@ export class RCCarAgent {
           });
           this.sendCameraFrame();
           this.lastToolName = "ask_smart_friend";
-          this.resumeVideoStream();
+
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
         }
+
+        // GATE: enforce strict tool ordering
+        // ask_smart_friend must precede turns, moves, and get_grid_depth
+        // get_grid_depth must precede move_forward/move_backward
+        const ALLOWED_AFTER: Record<string, string[]> = {
+          turn_left: ["ask_smart_friend"],
+          turn_right: ["ask_smart_friend"],
+          get_grid_depth: ["ask_smart_friend"],
+          move_forward: ["get_grid_depth"],
+          move_backward: ["get_grid_depth"],
+        };
+
+        const allowedPrev = ALLOWED_AFTER[call.name];
+        if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
+          this.consecutiveRejects++;
+          const expected = allowedPrev[0];
+          console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName}) [reject #${this.consecutiveRejects}]`);
+          let reject: string;
+          if (this.consecutiveRejects <= 2) {
+            reject = `REJECTED: You must call the ${expected} function before ${call.name}. Your next function call MUST be: ${expected}. Do NOT call ${call.name} again until you have called ${expected}.`;
+          } else {
+            reject = `REJECTED (attempt #${this.consecutiveRejects}): STOP trying to call ${call.name}. It will ALWAYS be rejected until you call the ${expected} function first. Your VERY NEXT function call must be ${expected}({ "reasoning": "..." }). Do that NOW.`;
+          }
+          this.rollout.toolCall(call.name, JSON.parse(call.arguments), call.call_id);
+          this.rollout.toolResponse(call.name, reject, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: call.call_id, output: reject },
+          });
+
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+        this.consecutiveRejects = 0;
 
         // "get_depth_grid" — run depth model, send annotated grid frame
         if (call.name === "get_depth_grid") {
@@ -378,7 +390,7 @@ export class RCCarAgent {
             this.sendAnnotatedFrame(annotated);
           }
           this.lastToolName = "get_depth_grid";
-          this.resumeVideoStream();
+
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -401,7 +413,7 @@ export class RCCarAgent {
           });
           this.sendCameraFrame();
           this.lastToolName = "get_grid_depth";
-          this.resumeVideoStream();
+
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
           return;
@@ -419,7 +431,6 @@ export class RCCarAgent {
         await this.camera.waitForFreshFrame();
         this.sendCameraFrame();
         this.lastToolName = call.name;
-        this.resumeVideoStream();
         this.processingToolCall = false;
 
         // Trigger model to continue with tool result + new frame
@@ -485,13 +496,6 @@ export class RCCarAgent {
           this.rollout.inputTranscription(event.transcript);
           console.log(`[you]   ${event.transcript}`);
 
-          // Start video stream on first user voice input so the model
-          // has visual context for its next response
-          if (!this.videoStreamInitialized) {
-            this.videoStreamInitialized = true;
-            this.sendCameraFrame();
-            this.startVideoStream();
-          }
         }
       },
     );
@@ -565,26 +569,6 @@ export class RCCarAgent {
     } as any);
   }
 
-  private startVideoStream(): void {
-    this.frameInterval = setInterval(() => {
-      this.sendCameraFrame();
-    }, 2000);
-  }
-
-  private pauseVideoStream(): void {
-    if (this.frameInterval) {
-      clearInterval(this.frameInterval);
-      this.frameInterval = null;
-    }
-  }
-
-  private resumeVideoStream(): void {
-    if (!this.frameInterval) {
-      this.frameInterval = setInterval(() => {
-        this.sendCameraFrame();
-      }, 2000);
-    }
-  }
 
   private startAudioStream(): void {
     this.micInstance = Mic({
@@ -681,10 +665,6 @@ export class RCCarAgent {
   }
 
   cleanup(): void {
-    if (this.frameInterval) {
-      clearInterval(this.frameInterval);
-      this.frameInterval = null;
-    }
     if (this.micInstance) {
       this.micInstance.stop();
       this.micInstance = null;
