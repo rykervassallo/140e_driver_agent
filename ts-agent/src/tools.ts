@@ -11,6 +11,12 @@ export const RESP_ACK = 0xaa;
 export const RESP_DONE = 0xbb;
 export const RESP_ERROR = 0xff;
 
+const REASONING_PARAM = {
+  type: "string",
+  description:
+    "REQUIRED: Describe what you see in the current camera frame — where is the target relative to the green guide lines? Why are you making this move?",
+};
+
 // OpenAI Realtime function tool declarations
 export const TOOL_DECLARATIONS = [
   {
@@ -21,13 +27,14 @@ export const TOOL_DECLARATIONS = [
     parameters: {
       type: "object",
       properties: {
+        reasoning: REASONING_PARAM,
         degrees: {
           type: "integer",
           description:
             "Number of degrees to turn left (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
-      required: ["degrees"],
+      required: ["reasoning", "degrees"],
     },
   },
   {
@@ -38,28 +45,31 @@ export const TOOL_DECLARATIONS = [
     parameters: {
       type: "object",
       properties: {
+        reasoning: REASONING_PARAM,
         degrees: {
           type: "integer",
           description:
             "Number of degrees to turn right (must be a multiple of 15, e.g. 15, 30, 45, ... 180).",
         },
       },
-      required: ["degrees"],
+      required: ["reasoning", "degrees"],
     },
   },
   {
     type: "function" as const,
     name: "move_forward",
-    description: "Move the car forward by the specified number of inches.",
+    description:
+      "Move the car forward by the specified number of inches. ONLY call this after calling look and confirming the target is between the green guide lines.",
     parameters: {
       type: "object",
       properties: {
+        reasoning: REASONING_PARAM,
         inches: {
           type: "integer",
           description: "Number of inches to move forward (1-72).",
         },
       },
-      required: ["inches"],
+      required: ["reasoning", "inches"],
     },
   },
   {
@@ -69,12 +79,30 @@ export const TOOL_DECLARATIONS = [
     parameters: {
       type: "object",
       properties: {
+        reasoning: REASONING_PARAM,
         inches: {
           type: "integer",
           description: "Number of inches to move backward (1-72).",
         },
       },
-      required: ["inches"],
+      required: ["reasoning", "inches"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "look",
+    description:
+      "Do nothing — just get a fresh camera frame. Use this to observe the scene before deciding on a movement. You should call this BEFORE calling move_forward to verify the target is between the green guide lines.",
+    parameters: {
+      type: "object",
+      properties: {
+        reasoning: {
+          type: "string",
+          description:
+            "REQUIRED: Describe what you see in the current frame and what you are looking for. Where is the target? Is it between the green lines?",
+        },
+      },
+      required: ["reasoning"],
     },
   },
   {

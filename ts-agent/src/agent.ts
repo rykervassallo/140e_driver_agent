@@ -215,6 +215,33 @@ export class RCCarAgent {
 
         this.processingToolCall = true;
         this.pauseVideoStream();
+
+        // "look" tool — no movement, just return a fresh frame
+        if (call.name === "look") {
+          const lookArgs = JSON.parse(call.arguments);
+          if (lookArgs.reasoning) {
+            console.log(`[agent] ${lookArgs.reasoning}`);
+          }
+          console.log("[agent] Tool: look()");
+          this.rollout.toolCall(call.name, lookArgs, call.call_id);
+          const lookResult = "Frame updated. IMPORTANT: Before your next tool call, you MUST first output a text message describing what you see — where is the target relative to the green lines? How far away is it? What will you do next? Do NOT call a tool without describing the frame first.";
+          this.rollout.toolResponse(call.name, lookResult, call.call_id);
+          this.rt!.send({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: call.call_id,
+              output: lookResult,
+            },
+          });
+          await this.camera.waitForNewFrame();
+          this.sendCameraFrame();
+          this.resumeVideoStream();
+          this.processingToolCall = false;
+          rt.send({ type: "response.create" });
+          return;
+        }
+
         await this.handleToolCall(call);
 
         // Guard: session may have closed while awaiting serial
@@ -428,6 +455,9 @@ export class RCCarAgent {
       const cmdByte = CMD_BYTES[call.name]!;
       const value = degrees ?? inches ?? 0;
 
+      if (args.reasoning) {
+        console.log(`[agent] ${args.reasoning}`);
+      }
       console.log(`[agent] Tool: ${call.name}(${value})`);
 
       // Wait time proportional to movement so the car finishes before we check the camera
