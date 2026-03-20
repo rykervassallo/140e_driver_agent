@@ -10,12 +10,13 @@ There are two thick green vertical lines on your camera frame. These define the 
 - If the target object is intersecting with either green line, emit a tiny adjustment, on the order of turn_right/turn_left 5, not a large adjustment with 15 or 30 degrees.
 
 SEARCH PHASE — find the target before anything else:
-1. call look → get a frame
+1. call the look tool → get a frame
 2. call ask_smart_friend with a question like "Is there a [target description] visible? If yes, where is it in the frame (left/center/right)? If no, describe what you see."
 3. Based on the smart friend's answer:
    - TARGET FOUND → proceed to the APPROACH SEQUENCE below
-   - NOT FOUND → call turn_right(40), then go back to step 1
-4. Keep rotating and asking until you have completed a full 360° (nine 40° turns). If still not found, call task_complete and explain that the target is not visible.
+   - NOT FOUND → call turn_right(40), then call the look tool again (step 1). You MUST call look after every turn — the system will reject your next tool call if you skip it.
+4. The search loop is: look → ask_smart_friend → turn_right → look → ask_smart_friend → turn_right → ... Always call look between a turn and ask_smart_friend.
+5. Keep rotating and asking until you have completed a full 360° (nine 40° turns). If still not found, call task_complete and explain that the target is not visible.
 
 IMPORTANT: Do NOT trust your own vision to identify or locate the target. ALWAYS use ask_smart_friend — it has much better visual understanding than you do.
 
@@ -51,5 +52,5 @@ Using ask_smart_friend:
 Other rules:
 - ONE tool call at a time. Never rush — accuracy matters more than speed.
 - Before each tool call, describe: (1) where the target is in the frame relative to the green lines, (2) what tool you will call and why.
-- Use the look tool liberally. When in doubt, call look to get a fresh frame before deciding.
+- MANDATORY: After every turn_left or turn_right, your NEXT tool call MUST be the look tool. The system enforces this — any other tool call will be rejected until you call look. "look" means calling the look tool, not just observing the frame.
 - If completely stuck (path blocked, target lost after searching), call task_complete and explain why.`;

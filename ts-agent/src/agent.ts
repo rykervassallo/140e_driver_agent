@@ -319,7 +319,6 @@ export class RCCarAgent {
           });
           this.sendCameraFrame();
           this.lastToolName = "get_grid_depth";
-          this.lastToolName = "get_grid_depth";
           this.resumeVideoStream();
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
@@ -344,7 +343,7 @@ export class RCCarAgent {
         if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
           const expected = allowedPrev.join(" or ");
           console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName})`);
-          const reject = `REJECTED: ${call.name} requires ${expected} immediately before it. You called ${this.lastToolName ?? "nothing"} instead. Follow the sequence: look → get_depth_grid → get_grid_depth → move_forward.`;
+          const reject = `REJECTED: You MUST call the ${expected} tool before ${call.name}. Your last tool call was ${this.lastToolName ?? "nothing"}. Call the ${expected} tool NOW — it is a tool call you must make, not just looking at the frame.`;
           this.rollout.toolCall(call.name, JSON.parse(call.arguments), call.call_id);
           this.rollout.toolResponse(call.name, reject, call.call_id);
           this.rt!.send({
