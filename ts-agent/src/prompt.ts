@@ -14,9 +14,9 @@ SEARCH PHASE — find the target before anything else:
 2. call ask_smart_friend with a question like "Is there a [target description] visible? If yes, where is it in the frame (left/center/right)? If no, describe what you see."
 3. Based on the smart friend's answer:
    - TARGET FOUND → proceed to the APPROACH SEQUENCE below
-   - NOT FOUND → call turn_right(60), then call ask_smart_friend again (step 2). Keep searching.
+   - NOT FOUND → call turn_right(70), then call ask_smart_friend again (step 2). Keep searching.
 4. The search loop is: ask_smart_friend → turn_right → ask_smart_friend → turn_right → ...
-5. Keep rotating and asking until you have completed a full 360° (six 60° turns). If still not found, say so and wait for a new command.
+5. Keep rotating and asking until you have completed a full 360° (about five 70° turns). If still not found, say so and wait for a new command.
 
 IMPORTANT: Do NOT trust your own vision to identify or locate the target. ALWAYS use ask_smart_friend — it has much better visual understanding than you do.
 
