@@ -46,6 +46,7 @@ export class RCCarAgent {
   private frameSaveSeq = 0;
   private lastToolName: string | null = null;
   private consecutiveRejects = 0;
+  private gateBypass = false;
 
   constructor(options: AgentOptions = {}) {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -310,6 +311,7 @@ export class RCCarAgent {
           });
           this.sendCameraFrame();
           this.lastToolName = "ask_smart_friend";
+          this.gateBypass = false; // Re-engage gate after autonomous analysis
 
           this.processingToolCall = false;
           rt.send({ type: "response.create" });
@@ -328,7 +330,10 @@ export class RCCarAgent {
         };
 
         const allowedPrev = ALLOWED_AFTER[call.name];
-        if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
+        if (this.gateBypass) {
+          console.log(`[agent] Gate bypassed for ${call.name} (user interrupt)`);
+          this.consecutiveRejects = 0;
+        } else if (allowedPrev && !allowedPrev.includes(this.lastToolName ?? "")) {
           this.consecutiveRejects++;
           const expected = allowedPrev[0];
           console.log(`[agent] REJECTED ${call.name} — requires ${expected} first (last was ${this.lastToolName}) [reject #${this.consecutiveRejects}]`);
@@ -495,6 +500,8 @@ export class RCCarAgent {
     rt.on("input_audio_buffer.speech_started", () => {
       this.rollout.interrupted();
       this.audioChunks = [];
+      this.gateBypass = true;
+      console.log("[agent] User speech detected — gate bypassed for next commands");
     });
 
     // --- Errors ---
